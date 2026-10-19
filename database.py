@@ -7,15 +7,15 @@ DB_NAME = "hg360_database.db"
 def initialiser_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Table pour l'historique des Value Bets
+    # Ajout de la colonne 'resultat' (par défaut NULL)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS historique (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT, match TEXT, ligue TEXT, lambda_a REAL, lambda_b REAL,
-            marche TEXT, probabilite REAL, cote_book REAL, ev REAL, mise_kelly REAL
+            marche TEXT, probabilite REAL, cote_book REAL, ev REAL, mise_kelly REAL,
+            resultat INTEGER DEFAULT NULL
         )
     """)
-    # Table pour la Bankroll (Portefeuille)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bankroll (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,21 +42,25 @@ def recuperer_historique():
     conn.close()
     return df
 
+def maj_resultat(id_pari, resultat):
+    """Met à jour le résultat d'un pari (1 = Gagné, 0 = Perdu)"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE historique SET resultat = ? WHERE id = ?", (resultat, id_pari))
+    conn.commit()
+    conn.close()
+
 def vider_historique():
     conn = sqlite3.connect(DB_NAME)
     conn.execute("DELETE FROM historique")
     conn.commit()
     conn.close()
 
-# --- NOUVELLES FONCTIONS BANKROLL ---
-
 def ajouter_transaction(type_trans, montant, description):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    cursor.execute("""
-        INSERT INTO bankroll (date, type, montant, description) VALUES (?, ?, ?, ?)
-    """, (date_str, type_trans, montant, description))
+    cursor.execute("INSERT INTO bankroll (date, type, montant, description) VALUES (?, ?, ?, ?)", (date_str, type_trans, montant, description))
     conn.commit()
     conn.close()
 
@@ -64,15 +68,11 @@ def recuperer_solde():
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT type, montant FROM bankroll", conn)
     conn.close()
-    if df.empty:
-        return 0.0
-    # Dépôt = +, Retrait/Pari = -
+    if df.empty: return 0.0
     solde = 0.0
     for index, row in df.iterrows():
-        if row['type'] == 'depot' or row['type'] == 'gain':
-            solde += row['montant']
-        else:
-            solde -= row['montant']
+        if row['type'] in ['depot', 'gain']: solde += row['montant']
+        else: solde -= row['montant']
     return solde
 
 def recuperer_transactions():
