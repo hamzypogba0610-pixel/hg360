@@ -30,7 +30,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Ultimate V4 (Radar & Coupes)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Ultimate V4 (Corrigé)</p>', unsafe_allow_html=True)
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
@@ -73,27 +73,29 @@ with st.sidebar:
 # --- LES ONGLETS ---
 tab1, tab2 = st.tabs(["🔍 Analyse Simple (avec Coupes)", "📡 Radar Multi-Matchs"])
 
+
 # ==========================================
 # ONGLET 1 : ANALYSE SIMPLE
 # ==========================================
 with tab1:
-    with st.form("prediction_form"):
-        st.subheader("📊 1. Sélection du Match")
-        
-        liste_affichage = list(CHAMPIONNATS.keys()) + ["COUPE_NATIONALE"]
-        ligue_choisie = st.selectbox("🏆 Compétition", options=liste_affichage, format_func=lambda x: CHAMPIONNATS.get(x, "Coupe Nationale (Hybride)"))
-        
-        if ligue_choisie == "COUPE_NATIONALE":
-            st.info("🛡️ Mode Coupe : Sélectionne le championnat d'origine des deux équipes.")
-            col_cup1, col_cup2 = st.columns(2)
-            with col_cup1:
-                ligue_A = st.selectbox("Ligue d'origine de l'équipe A", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_cup_A")
-            with col_cup2:
-                ligue_B = st.selectbox("Ligue d'origine de l'équipe B", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_cup_B")
-        else:
-            ligue_A = ligue_choisie
-            ligue_B = ligue_choisie
+    # 👉 LA CORRECTION EST ICI : Le sélecteur de compétition est EN DEHORS du formulaire
+    st.subheader("📊 1. Sélection du Match")
+    liste_affichage = list(CHAMPIONNATS.keys()) + ["COUPE_NATIONALE"]
+    ligue_choisie = st.selectbox("🏆 Compétition", options=liste_affichage, format_func=lambda x: CHAMPIONNATS.get(x, "Coupe Nationale (Hybride)"))
+    
+    if ligue_choisie == "COUPE_NATIONALE":
+        st.info("🛡️ Mode Coupe : Sélectionne le championnat d'origine des deux équipes.")
+        col_cup1, col_cup2 = st.columns(2)
+        with col_cup1:
+            ligue_A = st.selectbox("Ligue d'origine de l'équipe A", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_cup_A")
+        with col_cup2:
+            ligue_B = st.selectbox("Ligue d'origine de l'équipe B", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_cup_B")
+    else:
+        ligue_A = ligue_choisie
+        ligue_B = ligue_choisie
 
+    # 👉 Le formulaire commence ici
+    with st.form("prediction_form"):
         col1, col2 = st.columns(2)
         with col1:
             equipe_A = st.text_input("Nom de l'équipe A (Domicile)", placeholder="Ex: PSG")
