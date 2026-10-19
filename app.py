@@ -218,49 +218,6 @@ with tab1:
         submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
 # ==========================================
-# ONGLET 2 : ÉCOLOGIE DU BUT
-# ==========================================
-with tab2:
-    st.subheader("🌳 Écologie du But - Analyse Contextuelle")
-    st.write("Notez chaque couche de 0 à 10 pour évaluer la pression offensive réelle, au-delà des simples statistiques.")
-    
-    col_eco_A, col_eco_B = st.columns(2)
-    
-    with col_eco_A:
-        st.markdown("### 🏠 Équipe A")
-        c_A = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_A")
-        t_A = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_A")
-        m_A = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_A")
-        d_A = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_A")
-        v_A = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_A")
-        pression_A = eco.calculer_pression_offensive(c_A, t_A, m_A, d_A, v_A)
-        st.info(f"**Score de Pression A : {pression_A} / 100**")
-
-    with col_eco_B:
-        st.markdown("### ✈️ Équipe B")
-        c_B = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_B")
-        t_B = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_B")
-        m_B = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_B")
-        d_B = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_B")
-        v_B = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_B")
-        pression_B = eco.calculer_pression_offensive(c_B, t_B, m_B, d_B, v_B)
-        st.info(f"**Score de Pression B : {pression_B} / 100**")
-
-    st.markdown("---")
-    st.subheader("Dynamique du Match")
-    bonus_dyn = st.slider("Bonus / Malus de dynamique (Enjeu, Derby, Fatigue)", -10, 10, 0, help="Ajoutez + si un but précoce changerait tout. Retirez - si les équipes jouent le nul.")
-    
-    if st.button("📊 CALCULER L'INDICE DE BUTS", use_container_width=True):
-        indice_final = eco.calculer_indice_buts(pression_A, pression_B, bonus_dyn)
-        lecture, conseil = eco.interpreter_indice(indice_final)
-        
-        st.markdown(f"## Indice de Buts : {indice_final} / 100")
-        st.success(f"### {lecture}")
-        st.write(f"**Marchés à privilégier :** {conseil}")
-        
-        st.info("💡 **Conseil de Pro** : Utilise cet indice comme un filtre. Si l'indice est très bas (Under) mais que l'Analyse Simple (Modèle Oméga) donne un Over 2.5 élevé, il y a un conflit. Le vrai Value Bet apparaît quand les deux modèles sont d'accord !")
-
-# ==========================================
 # ONGLET 1 : RÉSULTATS (Suite du bloc 2)
 # ==========================================
     # --- RÉSULTATS ANALYSE SIMPLE ---
@@ -321,7 +278,7 @@ with tab2:
             col_res2.metric(f"λ V6 - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
             col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
             
-            # --- NOUVEAU : GOAL MATRIX (Moteur F - Dispersion) ---
+            # --- GOAL MATRIX (Moteur F - Dispersion) ---
             over_line_analytique = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
             mc_res = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=1000)
             over_line_mc = mc_res['over_25']
@@ -391,8 +348,79 @@ with tab2:
             matrice_scores = [[matrice_dc.get((i, j), 0) * 100 for j in range(5)] for i in range(5)]
             df_scores = pd.DataFrame(matrice_scores, index=[f"{i} but(s) {nom_A}" for i in range(5)], columns=[f"{j} but(s) {nom_B}" for j in range(5)])
             st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
+
+            # --- MOTEUR CONTREFACTUEL (GAMMA-X) ---
+            st.markdown("---")
+            st.markdown("### 🔮 Simulateur Contrefactuel (What-If)")
+            st.write("Ajuste artificiellement la performance des équipes pour voir l'impact sur les probabilités.")
+            
+            col_cf1, col_cf2 = st.columns(2)
+            with col_cf1:
+                impact_A_pct = st.slider("Ajustement Performance Équipe A (%)", -50, 50, 0, step=5)
+            with col_cf2:
+                impact_B_pct = st.slider("Ajustement Performance Équipe B (%)", -50, 50, 0, step=5)
+            
+            mult_A = 1 + (impact_A_pct / 100)
+            mult_B = 1 + (impact_B_pct / 100)
+            
+            lam_A_cf = lam_A * mult_A
+            lam_B_cf = lam_B * mult_B
+            
+            matrice_cf = dc.appliquer_correction(lam_A_cf, lam_B_cf, rho)
+            
+            over_cf = sum(p for (i, j), p in matrice_cf.items() if i + j > ligne_ou)
+            btts_cf = sum(p for (i, j), p in matrice_cf.items() if i > 0 and j > 0)
+            victoire_A_cf = sum(p for (i, j), p in matrice_cf.items() if i > j)
+            
+            col_cf_res1, col_cf_res2, col_cf_res3 = st.columns(3)
+            col_cf_res1.metric(f"Over {ligne_ou} (Contrefactuel)", f"{over_cf*100:.1f}%", delta=f"{(over_cf - over_line)*100:+.1f}%" if over_cf != over_line else "0%")
+            col_cf_res2.metric("BTTS (Contrefactuel)", f"{btts_cf*100:.1f}%", delta=f"{(btts_cf - p_btts)*100:+.1f}%" if btts_cf != p_btts else "0%")
+            col_cf_res3.metric(f"Victoire {nom_A} (Contrefactuel)", f"{victoire_A_cf*100:.1f}%", delta=f"{(victoire_A_cf - p_A)*100:+.1f}%" if victoire_A_cf != p_A else "0%")
         else:
             st.warning("⚠️ Remplis les noms et les stats.")
+
+# ==========================================
+# ONGLET 2 : ÉCOLOGIE DU BUT
+# ==========================================
+with tab2:
+    st.subheader("🌳 Écologie du But - Analyse Contextuelle")
+    st.write("Notez chaque couche de 0 à 10 pour évaluer la pression offensive réelle, au-delà des simples statistiques.")
+    
+    col_eco_A, col_eco_B = st.columns(2)
+    
+    with col_eco_A:
+        st.markdown("### 🏠 Équipe A")
+        c_A = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_A")
+        t_A = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_A")
+        m_A = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_A")
+        d_A = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_A")
+        v_A = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_A")
+        pression_A = eco.calculer_pression_offensive(c_A, t_A, m_A, d_A, v_A)
+        st.info(f"**Score de Pression A : {pression_A} / 100**")
+
+    with col_eco_B:
+        st.markdown("### ✈️ Équipe B")
+        c_B = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_B")
+        t_B = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_B")
+        m_B = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_B")
+        d_B = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_B")
+        v_B = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_B")
+        pression_B = eco.calculer_pression_offensive(c_B, t_B, m_B, d_B, v_B)
+        st.info(f"**Score de Pression B : {pression_B} / 100**")
+
+    st.markdown("---")
+    st.subheader("Dynamique du Match")
+    bonus_dyn = st.slider("Bonus / Malus de dynamique (Enjeu, Derby, Fatigue)", -10, 10, 0, help="Ajoutez + si un but précoce changerait tout. Retirez - si les équipes jouent le nul.")
+    
+    if st.button("📊 CALCULER L'INDICE DE BUTS", use_container_width=True):
+        indice_final = eco.calculer_indice_buts(pression_A, pression_B, bonus_dyn)
+        lecture, conseil = eco.interpreter_indice(indice_final)
+        
+        st.markdown(f"## Indice de Buts : {indice_final} / 100")
+        st.success(f"### {lecture}")
+        st.write(f"**Marchés à privilégier :** {conseil}")
+        
+        st.info("💡 **Conseil de Pro** : Utilise cet indice comme un filtre. Si l'indice est très bas (Under) mais que l'Analyse Simple (Modèle Oméga) donne un Over 2.5 élevé, il y a un conflit. Le vrai Value Bet apparaît quand les deux modèles sont d'accord !")
 
 # ==========================================
 # ONGLET 3 : RADAR MULTI-MATCHS
