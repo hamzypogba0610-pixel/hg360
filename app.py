@@ -70,17 +70,18 @@ with st.form("prediction_form"):
     with col_c1:
         mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=None, step=0.1, placeholder="Ex: 1.3")
         
-        # --- NOUVEAU : Choix de la ligne Over/Under ---
-        lignes_ou_std = [0.5, 1.5, 2.5, 3.5, 4.5, "Autre (Saisir manuellement)"]
-        choix_ligne_ou = st.selectbox("Ligne Over/Under", options=lignes_ou_std, index=2)
+        # --- LA CORRECTION EST ICI : UNE SEULE CASE INTELLIGENTE ---
+        ligne_ou = st.number_input(
+            "Ligne Over/Under (ex: 2.5, 3.0, 2.75)", 
+            min_value=0.5, 
+            max_value=10.0, 
+            value=2.5, 
+            step=0.25,
+            help="Tape directement ta ligne. Les flèches avancent par 0.25."
+        )
+        # -----------------------------------------------------------
         
-        if choix_ligne_ou == "Autre (Saisir manuellement)":
-            ligne_ou = st.number_input("Saisir la ligne (ex: 3.0, 2.25)", min_value=0.1, value=3.0, step=0.25)
-        else:
-            ligne_ou = choix_ligne_ou
-            
         cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.85")
-        # ----------------------------------------------
         
     with col_c2:
         lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
@@ -136,11 +137,11 @@ if submit:
         kelly_over = sk.calculer_kelly(over_line_dc, cote_ou) if cote_ou else 0
         data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{c_fair_over:.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{ev_over*100:+.1f}%" if cote_ou else "-", f"{kelly_over*100:.1f}%" if cote_ou else "-"])
 
-        # Push (Remboursement) - Affiché uniquement si la ligne est entière
+        # Push (Remboursement) - Affiché uniquement si la ligne est entière (ex: 3.0, 4.0)
         if push_line > 0:
             data.append([f"Push {ligne_ou} (Remboursé)", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
             
-        # Under (Optionnel, mais bien de l'afficher)
+        # Under
         data.append([f"Under {ligne_ou}", f"{under_line_dc*100:.1f}%", f"{sk.calculer_cote_equitable(under_line_dc):.2f}", "-", "-", "-"])
         
         # BTTS
