@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+from datetime import datetime, timedelta
 
 CODES_LIGUES = {
     "EPL": "PL", "CHAMPIONSHIP": "ELC", "BUNDES": "BL1", "SERIEA": "SA",
@@ -7,8 +8,7 @@ CODES_LIGUES = {
     "BSA": "BSA", "UCL": "CL", "EURO": "EC", "WORLD_CUP": "WC"
 }
 
-# --- NOUVEAU : Fonction pour récupérer la liste des équipes ---
-@st.cache_data(ttl=3600) # On garde la liste en mémoire 1 heure pour économiser l'API
+@st.cache_data(ttl=3600)
 def recuperer_liste_equipes(code_ligue, api_key):
     if code_ligue not in CODES_LIGUES:
         return []
@@ -19,12 +19,10 @@ def recuperer_liste_equipes(code_ligue, api_key):
         reponse = requests.get(url, headers=headers)
         if reponse.status_code == 200:
             equipes = reponse.json().get("teams", [])
-            # On trie la liste par ordre alphabétique
             return sorted([eq.get("name") for eq in equipes])
         return []
     except Exception:
         return []
-# -------------------------------------------------------------
 
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
     if code_ligue not in CODES_LIGUES:
@@ -90,20 +88,39 @@ def recuperer_moyenne_ligue(code_ligue, api_key):
     except Exception:
         return 2.5
 
-def recuperer_prochains_matchs(code_ligue, api_key, limite=5):
-    if code_ligue not in CODES_LIGUES: return []
+def recuperer_prochains_matchs(code_ligue, api_key, limite=5, jours_max=None):
+    """Récupère les prochains matchs programmés avec filtre de date optionnel."""
+    if code_ligue not in CODES_LIGUES:
+        return []
     code_api = CODES_LIGUES[code_ligue]
     headers = {"X-Auth-Token": api_key}
+    
     try:
         url = f"https://api.football-data.org/v4/competitions/{code_api}/matches?status=SCHEDULED"
         reponse = requests.get(url, headers=headers)
-        if reponse.status_code != 200: return []
+        if reponse.status_code != 200: 
+            return []
         
-        matchs = reponse.json().get("matches", [])
-        matchs = matchs[:limite]
+        matchs_api = reponse.json().get("matches", [])
+        
+        aujourd_hui = datetime.now().date()
+        
+        matchs_filtres = []
+        for m in matchs_api:
+            date_match_str = m["utcDate"][:10]
+            date_match = datetime.strptime(date_match_str, "%Y-%m-%d").date()
+            
+            if jours_max is not None:
+                limite_date = aujourd_hui + timedelta(days=jours_max)
+                if aujourd_hui <= date_match <= limite_date:
+                    matchs_filtres.append(m)
+            else:
+                matchs_filtres.append(m)
+        
+        matchs_filtres = matchs_filtres[:limite]
         
         resultats = []
-        for m in matchs:
+        for m in matchs_filtres:
             resultats.append({
                 "equipe_A": m["homeTeam"].get("name", m["homeTeam"].get("shortName")),
                 "equipe_B": m["awayTeam"].get("name", m["awayTeam"].get("shortName")),
