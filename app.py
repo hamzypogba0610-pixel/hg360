@@ -7,10 +7,8 @@ import staking as sk
 import pandas as pd
 import datetime
 
-# 1. Configuration
+# 1. Configuration & CSS
 st.set_page_config(page_title="HYPER-GOALS 360 | Pro", page_icon="⚽", layout="wide")
-
-# 2. CSS Premium
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #090a0f 0%, #161b26 100%); background-attachment: fixed; }
@@ -25,7 +23,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Tableau de Bord du Parieur Pro</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Modèle ULTIMATE (xG + Shrinkage)</p>', unsafe_allow_html=True)
 
 if "historique" not in st.session_state:
     st.session_state.historique = []
@@ -33,35 +31,34 @@ if "historique" not in st.session_state:
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
-    st.success("🟢 Moteurs chargés :\n- Poisson\n- Dixon-Coles\n- Handicap Asiatique\n- Kelly Staking")
-    st.info("💡 Entre les données et compare avec les cotes du bookmaker.")
+    st.success("🟢 Moteurs chargés :\n- Poisson / xG\n- Dixon-Coles\n- Handicap\n- Kelly")
     st.caption("HYPER-GOALS 360 V2.2")
     
     if len(st.session_state.historique) > 0:
         st.markdown("---")
-        st.subheader("📁 Exporter mes données")
         df_export = pd.DataFrame(st.session_state.historique)
         csv = df_export.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
-        if st.button("🗑️ Effacer l'historique", use_container_width=True):
-            st.session_state.historique = []
-            st.rerun()
+        st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
 
 with st.form("prediction_form"):
-    st.subheader("📊 1. Statistiques de Base")
+    st.subheader("📊 1. Statistiques (xG ou Buts)")
+    st.info("💡 Entre les xG (Expected Goals) si tu les as, sinon les buts. Indique aussi le nombre de matchs pour ajuster la fiabilité (Shrinkage).")
+    
     ligue_choisie = st.selectbox("🏆 Compétition", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x])
     
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### 🏠 Équipe A (Domicile)")
         equipe_A = st.text_input("Nom de l'équipe A", placeholder="Ex: Arsenal")
-        M_A = st.number_input("Buts marqués par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.5")
-        E_A = st.number_input("Buts encaissés par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.0")
+        n_A = st.number_input("Nombre de matchs joués (A)", min_value=1, value=10, step=1, help="Sert au calcul du shrinkage.")
+        M_A_brut = st.number_input("xG (ou Buts) marqués par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.5")
+        E_A_brut = st.number_input("xGA (ou Buts) encaissés par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.0")
     with col2:
         st.markdown("### ✈️ Équipe B (Extérieur)")
         equipe_B = st.text_input("Nom de l'équipe B", placeholder="Ex: Chelsea")
-        M_B = st.number_input("Buts marqués par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.2")
-        E_B = st.number_input("Buts encaissés par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
+        n_B = st.number_input("Nombre de matchs joués (B)", min_value=1, value=10, step=1, help="Sert au calcul du shrinkage.")
+        M_B_brut = st.number_input("xG (ou Buts) marqués par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.2")
+        E_B_brut = st.number_input("xGA (ou Buts) encaissés par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
     
     st.markdown("---")
     st.subheader("💰 2. Cotes & Paramètres")
@@ -69,27 +66,15 @@ with st.form("prediction_form"):
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=None, step=0.1, placeholder="Ex: 1.3")
-        
-        # --- LA CORRECTION EST ICI : UNE SEULE CASE INTELLIGENTE ---
-        ligne_ou = st.number_input(
-            "Ligne Over/Under (ex: 2.5, 3.0, 2.75)", 
-            min_value=0.5, 
-            max_value=10.0, 
-            value=2.5, 
-            step=0.25,
-            help="Tape directement ta ligne. Les flèches avancent par 0.25."
-        )
-        # -----------------------------------------------------------
-        
+        ligne_ou = st.number_input("Ligne Over/Under", min_value=0.5, max_value=10.0, value=2.5, step=0.25)
         cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.85")
-        
     with col_c2:
         lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
         ligne_choisie = st.selectbox("Ligne Handicap A", options=lignes_ah, index=8)
-        cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.90")
+        cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05)
     with col_c3:
-        cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.75")
-        rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01, help="Correction Dixon-Coles")
+        cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05)
+        rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01)
     
     st.markdown("**Cotes 1X2**")
     col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
@@ -103,19 +88,25 @@ with st.form("prediction_form"):
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
 if submit:
-    if equipe_A and equipe_B and M_A is not None and E_A is not None and M_B is not None and E_B is not None and mu is not None:
+    if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
+        # --- ÉTAPE 1 : SHRINKAGE (Ajustement vers la moyenne de la ligue) ---
+        M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
+        E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
+        M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
+        E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
+        
+        # --- ÉTAPE 2 : CALCUL DES LAMBDAS ---
         lam_A = me.calculer_lambda(M_A, E_B, mu)
         lam_B = me.calculer_lambda(M_B, E_A, mu)
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
-        st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}** (Dixon-Coles ρ={rho})")
+        st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}**")
+        st.caption(f"Note : Les statistiques ont été ajustées (Shrinkage) vers la moyenne du championnat car les échantillons sont de {n_A} et {n_B} matchs.")
         
-        # Calculs Over/Under stricts via la matrice Dixon-Coles
         over_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
         under_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
-
         p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
         p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
         p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
@@ -124,38 +115,23 @@ if submit:
         res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
         p_win_ah = res_ah["win"] if res_ah["type"] == "normal" else res_ah["full_win"] + 0.5 * res_ah["half_win"]
 
-        col_res1, col_res2 = st.columns(2)
-        col_res1.metric(label=f"Buts attendus (λ) - {equipe_A}", value=f"{lam_A:.2f}")
-        col_res2.metric(label=f"Buts attendus (λ) - {equipe_B}", value=f"{lam_B:.2f}")
+        col_res1, col_res2, col_res3 = st.columns(3)
+        col_res1.metric(label=f"xG Ajusté (λ) - {equipe_A}", value=f"{lam_A:.2f}")
+        col_res2.metric(label=f"xG Ajusté (λ) - {equipe_B}", value=f"{lam_B:.2f}")
+        col_res3.metric(label="Total Buts Attendus", value=f"{lam_A + lam_B:.2f}")
         
         st.markdown("### 📋 Récapitulatif des Marchés")
         data = []
         
-        # Over
-        c_fair_over = sk.calculer_cote_equitable(over_line_dc)
-        ev_over = sk.calculer_ev(over_line_dc, cote_ou) if cote_ou else 0
-        kelly_over = sk.calculer_kelly(over_line_dc, cote_ou) if cote_ou else 0
-        data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{c_fair_over:.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{ev_over*100:+.1f}%" if cote_ou else "-", f"{kelly_over*100:.1f}%" if cote_ou else "-"])
-
-        # Push (Remboursement) - Affiché uniquement si la ligne est entière (ex: 3.0, 4.0)
+        data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{sk.calculer_cote_equitable(over_line_dc):.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{sk.calculer_ev(over_line_dc, cote_ou)*100:+.1f}%" if cote_ou else "-", f"{sk.calculer_kelly(over_line_dc, cote_ou)*100:.1f}%" if cote_ou else "-"])
         if push_line > 0:
             data.append([f"Push {ligne_ou} (Remboursé)", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
-            
-        # Under
         data.append([f"Under {ligne_ou}", f"{under_line_dc*100:.1f}%", f"{sk.calculer_cote_equitable(under_line_dc):.2f}", "-", "-", "-"])
         
-        # BTTS
-        c_fair_btts = sk.calculer_cote_equitable(p_btts)
-        ev_btts = sk.calculer_ev(p_btts, cote_btts) if cote_btts else 0
-        kelly_btts = sk.calculer_kelly(p_btts, cote_btts) if cote_btts else 0
-        data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{c_fair_btts:.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{ev_btts*100:+.1f}%" if cote_btts else "-", f"{kelly_btts*100:.1f}%" if cote_btts else "-"])
-        
-        # 1X2
+        data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{sk.calculer_cote_equitable(p_btts):.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{sk.calculer_ev(p_btts, cote_btts)*100:+.1f}%" if cote_btts else "-", f"{sk.calculer_kelly(p_btts, cote_btts)*100:.1f}%" if cote_btts else "-"])
         data.append([f"Victoire {equipe_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
         data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{sk.calculer_cote_equitable(p_Nul):.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{sk.calculer_ev(p_Nul, cote_X)*100:+.1f}%" if cote_X else "-", f"{sk.calculer_kelly(p_Nul, cote_X)*100:.1f}%" if cote_X else "-"])
         data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
-        
-        # Handicap
         data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{sk.calculer_cote_equitable(p_win_ah):.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{sk.calculer_ev(p_win_ah, cote_ah)*100:+.1f}%" if cote_ah else "-", f"{sk.calculer_kelly(p_win_ah, cote_ah)*100:.1f}%" if cote_ah else "-"])
         
         df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
@@ -170,13 +146,4 @@ if submit:
         st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
 
     else:
-        st.warning("⚠️ Veuillez remplir les noms et les statistiques des équipes.")
-
-st.markdown("---")
-with st.expander("⚠️ Avertissement & Model Card (À lire)"):
-    st.markdown("""
-    **Statut du modèle :** Expérimental (HYPER-GOALS 360 V2.2).
-    **Ce que le bot fait :** Il estime les buts attendus et calcule des probabilités conditionnelles.
-    **Ce que le bot ne fait pas :** Il ne garantit aucun résultat.
-    **Jeu responsable :** Le pari sportif comporte des risques. Jouez de manière responsable.
-    """)
+        st.warning("⚠️ Veuillez remplir tous les champs.")
