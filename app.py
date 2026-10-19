@@ -42,7 +42,7 @@ with st.sidebar:
 
 with st.form("prediction_form"):
     st.subheader("📊 1. Statistiques (xG ou Buts)")
-    st.info("💡 Entre les xG (Expected Goals) si tu les as, sinon les buts. Indique aussi le nombre de matchs pour ajuster la fiabilité (Shrinkage).")
+    st.info("💡 Utilise les xG (Expected Goals) de préférence. L'échantillon idéal est de 15 matchs (10 dom/ext + 5 récents).")
     
     ligue_choisie = st.selectbox("🏆 Compétition", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x])
     
@@ -50,13 +50,25 @@ with st.form("prediction_form"):
     with col1:
         st.markdown("### 🏠 Équipe A (Domicile)")
         equipe_A = st.text_input("Nom de l'équipe A", placeholder="Ex: Arsenal")
-        n_A = st.number_input("Nombre de matchs joués (A)", min_value=1, value=10, step=1, help="Sert au calcul du shrinkage.")
+        n_A = st.number_input(
+            "Matchs pris en compte (A)", 
+            min_value=1, 
+            value=15, 
+            step=1, 
+            help="Idéalement : 10 matchs à domicile + 5 derniers matchs toutes compétitions."
+        )
         M_A_brut = st.number_input("xG (ou Buts) marqués par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.5")
         E_A_brut = st.number_input("xGA (ou Buts) encaissés par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.0")
     with col2:
         st.markdown("### ✈️ Équipe B (Extérieur)")
         equipe_B = st.text_input("Nom de l'équipe B", placeholder="Ex: Chelsea")
-        n_B = st.number_input("Nombre de matchs joués (B)", min_value=1, value=10, step=1, help="Sert au calcul du shrinkage.")
+        n_B = st.number_input(
+            "Matchs pris en compte (B)", 
+            min_value=1, 
+            value=15, 
+            step=1, 
+            help="Idéalement : 10 matchs à l'extérieur + 5 derniers matchs toutes compétitions."
+        )
         M_B_brut = st.number_input("xG (ou Buts) marqués par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.2")
         E_B_brut = st.number_input("xGA (ou Buts) encaissés par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
     
@@ -90,7 +102,7 @@ with st.form("prediction_form"):
 if submit:
     if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
-        # --- ÉTAPE 1 : SHRINKAGE (Ajustement vers la moyenne de la ligue) ---
+        # --- ÉTAPE 1 : SHRINKAGE ---
         M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
         E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
         M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
@@ -102,7 +114,11 @@ if submit:
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
         st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}**")
-        st.caption(f"Note : Les statistiques ont été ajustées (Shrinkage) vers la moyenne du championnat car les échantillons sont de {n_A} et {n_B} matchs.")
+        
+        # Calcul du poids de confiance pour l'affichage
+        poids_A = n_A / (n_A + 5) * 100
+        poids_B = n_B / (n_B + 5) * 100
+        st.caption(f"📊 **Shrinkage** : Confiance de {poids_A:.0f}% dans les stats de {equipe_A} et {poids_B:.0f}% dans celles de {equipe_B} (le reste est ramené vers la moyenne du championnat).")
         
         over_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
