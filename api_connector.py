@@ -1,10 +1,30 @@
 import requests
+import streamlit as st
 
 CODES_LIGUES = {
     "EPL": "PL", "CHAMPIONSHIP": "ELC", "BUNDES": "BL1", "SERIEA": "SA",
     "LALIGA": "PD", "LIGUE1": "FL1", "DED": "DED", "PPL": "PPL",
     "BSA": "BSA", "UCL": "CL", "EURO": "EC", "WORLD_CUP": "WC"
 }
+
+# --- NOUVEAU : Fonction pour récupérer la liste des équipes ---
+@st.cache_data(ttl=3600) # On garde la liste en mémoire 1 heure pour économiser l'API
+def recuperer_liste_equipes(code_ligue, api_key):
+    if code_ligue not in CODES_LIGUES:
+        return []
+    code_api = CODES_LIGUES[code_ligue]
+    headers = {"X-Auth-Token": api_key}
+    try:
+        url = f"https://api.football-data.org/v4/competitions/{code_api}/teams"
+        reponse = requests.get(url, headers=headers)
+        if reponse.status_code == 200:
+            equipes = reponse.json().get("teams", [])
+            # On trie la liste par ordre alphabétique
+            return sorted([eq.get("name") for eq in equipes])
+        return []
+    except Exception:
+        return []
+# -------------------------------------------------------------
 
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
     if code_ligue not in CODES_LIGUES:
@@ -70,11 +90,8 @@ def recuperer_moyenne_ligue(code_ligue, api_key):
     except Exception:
         return 2.5
 
-# --- NOUVELLE FONCTION : RADAR DES MATCHS ---
 def recuperer_prochains_matchs(code_ligue, api_key, limite=5):
-    """Récupère les prochains matchs programmés d'une ligue (max 5 pour l'API)"""
-    if code_ligue not in CODES_LIGUES:
-        return []
+    if code_ligue not in CODES_LIGUES: return []
     code_api = CODES_LIGUES[code_ligue]
     headers = {"X-Auth-Token": api_key}
     try:
@@ -83,7 +100,6 @@ def recuperer_prochains_matchs(code_ligue, api_key, limite=5):
         if reponse.status_code != 200: return []
         
         matchs = reponse.json().get("matches", [])
-        # On ne garde que les X premiers pour ne pas exploser la limite de l'API
         matchs = matchs[:limite]
         
         resultats = []
@@ -91,7 +107,7 @@ def recuperer_prochains_matchs(code_ligue, api_key, limite=5):
             resultats.append({
                 "equipe_A": m["homeTeam"].get("name", m["homeTeam"].get("shortName")),
                 "equipe_B": m["awayTeam"].get("name", m["awayTeam"].get("shortName")),
-                "date": m["utcDate"][:10] # Garde juste la date AAAA-MM-JJ
+                "date": m["utcDate"][:10]
             })
         return resultats
     except Exception:
