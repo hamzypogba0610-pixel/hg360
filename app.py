@@ -1,7 +1,7 @@
 import streamlit as st
 from leagues import CHAMPIONNATS
 import math_engine as me
-import asian_handicap as ah
+import dixon_coles as dc
 import staking as sk
 import pandas as pd
 
@@ -23,12 +23,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Tableau de Bord du Parieur</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Tableau de Bord du Parieur Pro</p>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
-    st.info("💡 Remplis les stats, entre les cotes du bookmaker, et le bot trouvera les Value Bets !")
+    st.info("💡 Ajuste le paramètre Rho (ρ) pour corriger les scores serrés (0-0, 1-1).")
     st.caption("HYPER-GOALS 360 V2.2")
 
 # 5. Formulaire de saisie
@@ -49,8 +49,7 @@ with st.form("prediction_form"):
         E_B = st.number_input("Buts encaissés par B (moyenne)", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
     
     st.markdown("---")
-    st.subheader("💰 2. Cotes du Bookmaker (Optionnel)")
-    st.write("Laisse vide si tu ne veux pas calculer la value sur ce marché.")
+    st.subheader("💰 2. Cotes du Bookmaker & Paramètres")
     
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
@@ -62,6 +61,7 @@ with st.form("prediction_form"):
         cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.90")
     with col_c3:
         cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.75")
+        rho = st.slider("Paramètre Rho (ρ) Dixon-Coles", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01, help="Valeur négative typique pour le football. Corrige les scores 0-0, 1-0, 0-1, 1-1.")
     
     st.markdown("**Cotes 1X2 (Victoire / Nul / Défaite)**")
     col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
@@ -81,30 +81,41 @@ if submit:
         lam_A = me.calculer_lambda(M_A, E_B, mu)
         lam_B = me.calculer_lambda(M_B, E_A, mu)
         
-        st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}** ({CHAMPIONNATS[ligue_choisie]})")
+        # --- NOUVEAU : On applique Dixon-Coles ! ---
+        matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
+        
+        st.success(f"✅ Analyse terminée (Dixon-Coles Activé) : **{equipe_A}** vs **{equipe_B}**")
+        
+        col_res1, col_res2 = st.columns(2)
+        col_res1.metric(label=f"Buts attendus (λ) - {equipe_A}", value=f"{lam_A:.2f}")
+        col_res2.metric(label=f"Buts attendus (λ) - {equipe_B}", value=f"{lam_B:.2f}")
+        
+        # Calcul des probabilités à partir de la matrice CORRIGÉE
+        over_25 = sum(p for (i, j), p in matrice_dc.items() if i + j > 2)
+        p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
+        
+        p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
+        p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
+        p_B = sum(p for (i, j), p in matrice_dc.items() if i < j)
         
         # --- TABLEAU RÉCAPITULATIF DES VALUE BETS ---
         st.markdown("### 📋 Récapitulatif des Marchés et Value Bets")
         
-        # Dictionnaire pour stocker les données du tableau
         data = []
         
-        # 1. Over 2.5
-        over_25, _ = me.proba_over_under(lam_A, lam_B, 2.5)
+        # Over 2.5
         c_fair = sk.calculer_cote_equitable(over_25)
         ev = sk.calculer_ev(over_25, cote_over) if cote_over else 0
         kelly = sk.calculer_kelly(over_25, cote_over) if cote_over else 0
         data.append(["Over 2.5", f"{over_25*100:.1f}%", f"{c_fair:.2f}", f"{cote_over:.2f}" if cote_over else "-", f"{ev*100:+.1f}%" if cote_over else "-", f"{kelly*100:.1f}%" if cote_over else "-"])
         
-        # 2. BTTS
-        p_btts, _ = me.proba_btts(lam_A, lam_B)
+        # BTTS
         c_fair_btts = sk.calculer_cote_equitable(p_btts)
         ev_btts = sk.calculer_ev(p_btts, cote_btts) if cote_btts else 0
         kelly_btts = sk.calculer_kelly(p_btts, cote_btts) if cote_btts else 0
         data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{c_fair_btts:.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{ev_btts*100:+.1f}%" if cote_btts else "-", f"{kelly_btts*100:.1f}%" if cote_btts else "-"])
         
-        # 3. 1X2
-        p_A, p_Nul, p_B = me.proba_1x2(lam_A, lam_B)
+        # 1X2
         c_fair_1 = sk.calculer_cote_equitable(p_A)
         ev_1 = sk.calculer_ev(p_A, cote_1) if cote_1 else 0
         kelly_1 = sk.calculer_kelly(p_A, cote_1) if cote_1 else 0
@@ -120,69 +131,53 @@ if submit:
         kelly_2 = sk.calculer_kelly(p_B, cote_2) if cote_2 else 0
         data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{c_fair_2:.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{ev_2*100:+.1f}%" if cote_2 else "-", f"{kelly_2*100:.1f}%" if cote_2 else "-"])
         
-        # 4. Handicap Asiatique
-        res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
-        if res_ah["type"] == "normal":
-            p_ah_win = res_ah["win"]
+        # Handicap Asiatique (calculé directement sur la matrice DC)
+        est_quart = (ligne_choisie % 0.5 != 0)
+        if not est_quart:
+            p_win_ah = sum(p for (i, j), p in matrice_dc.items() if (i - j) + ligne_choisie > 0)
         else:
-            p_ah_win = res_ah["full_win"] + 0.5 * res_ah["half_win"] # Probabilité effective
-        c_fair_ah = sk.calculer_cote_equitable(p_ah_win)
-        ev_ah = sk.calculer_ev(p_ah_win, cote_ah) if cote_ah else 0
-        kelly_ah = sk.calculer_kelly(p_ah_win, cote_ah) if cote_ah else 0
-        data.append([f"Handicap A ({ligne_choisie})", f"{p_ah_win*100:.1f}%", f"{c_fair_ah:.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{ev_ah*100:+.1f}%" if cote_ah else "-", f"{kelly_ah*100:.1f}%" if cote_ah else "-"])
+            h_inf, h_sup = ligne_choisie - 0.25, ligne_choisie + 0.25
+            full_w = sum(p for (i, j), p in matrice_dc.items() if (i-j)+h_inf > 0 and (i-j)+h_sup > 0)
+            half_w = sum(p for (i, j), p in matrice_dc.items() if (i-j)+h_inf == 0 and (i-j)+h_sup > 0)
+            p_win_ah = full_w + 0.5 * half_w
+            
+        c_fair_ah = sk.calculer_cote_equitable(p_win_ah)
+        ev_ah = sk.calculer_ev(p_win_ah, cote_ah) if cote_ah else 0
+        kelly_ah = sk.calculer_kelly(p_win_ah, cote_ah) if cote_ah else 0
+        data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{c_fair_ah:.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{ev_ah*100:+.1f}%" if cote_ah else "-", f"{kelly_ah*100:.1f}%" if cote_ah else "-"])
         
-        # Création du DataFrame
         df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
         
-        # Affichage avec un beau style
         st.dataframe(
             df_markets.style.format({
-                "Probabilité": "{}",
-                "Cote Équitable": "{}",
-                "Cote Book": "{}",
-                "EV": "{}",
-                "Mise Kelly": "{}"
+                "Probabilité": "{}", "Cote Équitable": "{}", "Cote Book": "{}", "EV": "{}", "Mise Kelly": "{}"
             }).map(lambda x: 'color: #00e676' if isinstance(x, str) and x.startswith('+') else ('color: #ff5252' if isinstance(x, str) and x.startswith('-') and x != '-' else 'color: white'), subset=["EV"]),
             use_container_width=True,
             hide_index=True
         )
         st.caption("🟢 EV positif = Value Bet | 🔴 EV négatif = Pas de value")
 
-        # --- DÉTAILS (Handicap & Scores) ---
+        # --- MATRICE DES SCORES ---
         st.markdown("---")
-        col_det1, col_det2 = st.columns([1, 2])
+        st.markdown(f"### 🎯 Matrice des Scores Exacts (Corrigée Dixon-Coles ρ={rho})")
         
-        with col_det1:
-            st.markdown(f"### ⚔️ Détail Handicap ({ligne_choisie})")
-            if res_ah["type"] == "normal":
-                st.metric("Victoire", f"{res_ah['win']*100:.1f} %")
-                st.metric("Remboursé", f"{res_ah['push']*100:.1f} %")
-                st.metric("Défaite", f"{res_ah['lose']*100:.1f} %")
-            else:
-                st.metric("Gain Total", f"{res_ah['full_win']*100:.1f} %")
-                st.metric("Gain Partiel", f"{res_ah['half_win']*100:.1f} %")
-                st.metric("Perte Partielle", f"{res_ah['half_lose']*100:.1f} %")
-                st.metric("Perte Totale", f"{res_ah['full_lose']*100:.1f} %")
-                
-        with col_det2:
-            st.markdown("### 🎯 Matrice des Scores Exacts")
-            matrice_scores = []
-            for buts_A in range(5):
-                ligne = []
-                for buts_B in range(5):
-                    proba = me.calculer_score_exact(lam_A, lam_B, buts_A, buts_B)
-                    ligne.append(proba * 100)
-                matrice_scores.append(ligne)
-                
-            df_scores = pd.DataFrame(
-                matrice_scores,
-                index=[f"{i} but(s) {equipe_A}" for i in range(5)],
-                columns=[f"{j} but(s) {equipe_B}" for j in range(5)]
-            )
-            st.dataframe(
-                df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None),
-                use_container_width=True
-            )
+        matrice_scores = []
+        for buts_A in range(5):
+            ligne = []
+            for buts_B in range(5):
+                proba = matrice_dc.get((buts_A, buts_B), 0) * 100
+                ligne.append(proba)
+            matrice_scores.append(ligne)
+            
+        df_scores = pd.DataFrame(
+            matrice_scores,
+            index=[f"{i} but(s) {equipe_A}" for i in range(5)],
+            columns=[f"{j} but(s) {equipe_B}" for j in range(5)]
+        )
+        st.dataframe(
+            df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None),
+            use_container_width=True
+        )
 
     else:
         st.warning("⚠️ Veuillez remplir les noms et les statistiques des équipes.")
