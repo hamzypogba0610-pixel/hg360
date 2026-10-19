@@ -2,7 +2,7 @@ import streamlit as st
 from leagues import CHAMPIONNATS
 import math_engine as me
 import dixon_coles as dc
-import asian_handicap as ah  # <--- On réintègre notre fichier de handicap !
+import asian_handicap as ah
 import staking as sk
 import pandas as pd
 import datetime
@@ -30,10 +30,12 @@ st.markdown('<p class="sub-title">Tableau de Bord du Parieur Pro</p>', unsafe_al
 if "historique" not in st.session_state:
     st.session_state.historique = []
 
+# --- BARRE LATÉRALE ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
-    st.info("💡 Le paramètre Rho (ρ) ajuste la correction des scores serrés.")
+    st.success("🟢 Moteurs chargés :\n- Poisson\n- Dixon-Coles\n- Handicap Asiatique\n- Kelly Staking")
+    st.info("💡 Entre les données, choisis ta ligne de marché et compare avec les cotes du bookmaker.")
     st.caption("HYPER-GOALS 360 V2.2")
     
     if len(st.session_state.historique) > 0:
@@ -41,11 +43,12 @@ with st.sidebar:
         st.subheader("📁 Exporter mes données")
         df_export = pd.DataFrame(st.session_state.historique)
         csv = df_export.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Télécharger l'historique (CSV)", data=csv, file_name=f"hg360_historique_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
+        st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
         if st.button("🗑️ Effacer l'historique", use_container_width=True):
             st.session_state.historique = []
             st.rerun()
 
+# --- FORMULAIRE ---
 with st.form("prediction_form"):
     st.subheader("📊 1. Statistiques de Base")
     ligue_choisie = st.selectbox("🏆 Compétition", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x])
@@ -68,14 +71,16 @@ with st.form("prediction_form"):
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=None, step=0.1, placeholder="Ex: 1.3")
-        cote_over = st.number_input("Cote Over 2.5", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.85")
+        # NOUVEAU : Choix de la ligne Over/Under
+        ligne_ou = st.selectbox("Ligne Over/Under", options=[1.5, 2.5, 3.5], index=1)
+        cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.85")
     with col_c2:
         lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
         ligne_choisie = st.selectbox("Ligne Handicap A", options=lignes_ah, index=8)
         cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.90")
     with col_c3:
         cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.75")
-        rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01, help="Ajuste manuellement la correction Dixon-Coles.")
+        rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01, help="Correction Dixon-Coles")
     
     st.markdown("**Cotes 1X2**")
     col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
@@ -88,54 +93,57 @@ with st.form("prediction_form"):
 
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
+# --- RÉSULTATS ---
 if submit:
     if equipe_A and equipe_B and M_A is not None and E_A is not None and M_B is not None and E_B is not None and mu is not None:
         
         lam_A = me.calculer_lambda(M_A, E_B, mu)
         lam_B = me.calculer_lambda(M_B, E_A, mu)
-        
-        # 1. On utilise notre moteur mathématique (math_engine.py)
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
         st.success(f"✅ Analyse terminée (Dixon-Coles Activé) : **{equipe_A}** vs **{equipe_B}**")
         
-        # 2. Calcul des marchés via la matrice (math_engine + dixon_coles)
-        over_25 = sum(p for (i, j), p in matrice_dc.items() if i + j > 2)
+        # Calculs Over/Under dynamiques
+        over_line, under_line = me.proba_over_under(lam_A, lam_B, ligne_ou)
+        # On recalcule via la matrice DC pour plus de précision
+        over_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
+        under_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
+        push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
+
         p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
         p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
         p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
         p_B = sum(p for (i, j), p in matrice_dc.items() if i < j)
         
-        # 3. Calcul du Handicap via notre fichier dédié (asian_handicap.py)
         res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
         if res_ah["type"] == "normal":
             p_win_ah = res_ah["win"]
         else:
             p_win_ah = res_ah["full_win"] + 0.5 * res_ah["half_win"]
 
-        # Sauvegarde Value Bet Over 2.5
-        if over_25 > 0 and cote_over:
-            ev = sk.calculer_ev(over_25, cote_over)
+        # Sauvegarde Value Bet
+        if over_line_dc > 0 and cote_ou:
+            ev = sk.calculer_ev(over_line_dc, cote_ou)
             if ev > 0:
                 st.session_state.historique.append({
                     "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "Match": f"{equipe_A} - {equipe_B}",
                     "Ligue": CHAMPIONNATS[ligue_choisie], "Lambda A": round(lam_A, 2), "Lambda B": round(lam_B, 2),
-                    "Marché": "Over 2.5", "Proba (%)": round(over_25*100, 1), "Cote Book": cote_over,
-                    "EV (%)": round(ev*100, 1), "Mise Kelly (%)": round(sk.calculer_kelly(over_25, cote_over)*100, 1)
+                    "Marché": f"Over {ligne_ou}", "Proba (%)": round(over_line_dc*100, 1), "Cote Book": cote_ou,
+                    "EV (%)": round(ev*100, 1), "Mise Kelly (%)": round(sk.calculer_kelly(over_line_dc, cote_ou)*100, 1)
                 })
 
         col_res1, col_res2 = st.columns(2)
         col_res1.metric(label=f"Buts attendus (λ) - {equipe_A}", value=f"{lam_A:.2f}")
         col_res2.metric(label=f"Buts attendus (λ) - {equipe_B}", value=f"{lam_B:.2f}")
         
-        st.markdown("### 📋 Récapitulatif des Marchés et Value Bets")
+        st.markdown("### 📋 Récapitulatif des Marchés")
         data = []
         
-        # Over 2.5
-        c_fair = sk.calculer_cote_equitable(over_25)
-        ev = sk.calculer_ev(over_25, cote_over) if cote_over else 0
-        kelly = sk.calculer_kelly(over_25, cote_over) if cote_over else 0
-        data.append(["Over 2.5", f"{over_25*100:.1f}%", f"{c_fair:.2f}", f"{cote_over:.2f}" if cote_over else "-", f"{ev*100:+.1f}%" if cote_over else "-", f"{kelly*100:.1f}%" if cote_over else "-"])
+        # Over/Under
+        c_fair = sk.calculer_cote_equitable(over_line_dc)
+        ev = sk.calculer_ev(over_line_dc, cote_ou) if cote_ou else 0
+        kelly = sk.calculer_kelly(over_line_dc, cote_ou) if cote_ou else 0
+        data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{c_fair:.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{ev*100:+.1f}%" if cote_ou else "-", f"{kelly*100:.1f}%" if cote_ou else "-"])
         
         # BTTS
         c_fair_btts = sk.calculer_cote_equitable(p_btts)
@@ -159,7 +167,7 @@ if submit:
         kelly_2 = sk.calculer_kelly(p_B, cote_2) if cote_2 else 0
         data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{c_fair_2:.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{ev_2*100:+.1f}%" if cote_2 else "-", f"{kelly_2*100:.1f}%" if cote_2 else "-"])
         
-        # Handicap Asiatique
+        # Handicap
         c_fair_ah = sk.calculer_cote_equitable(p_win_ah)
         ev_ah = sk.calculer_ev(p_win_ah, cote_ah) if cote_ah else 0
         kelly_ah = sk.calculer_kelly(p_win_ah, cote_ah) if cote_ah else 0
@@ -178,3 +186,14 @@ if submit:
 
     else:
         st.warning("⚠️ Veuillez remplir les noms et les statistiques des équipes.")
+
+# --- SECTION MODEL CARD / DISCLAIMER (Sécurité Pro) ---
+st.markdown("---")
+with st.expander("⚠️ Avertissement & Model Card (À lire)"):
+    st.markdown("""
+    **Statut du modèle :** Expérimental (HYPER-GOALS 360 V2.2).
+    **Ce que le bot fait :** Il estime les buts attendus et calcule des probabilités conditionnelles basées sur la loi de Poisson, corrigée par Dixon-Coles.
+    **Ce que le bot ne fait pas :** Il ne garantit aucun résultat. Il ne remplace pas l'analyse humaine (compositions, blessures, météo).
+    **Gestion de bankroll :** La mise Kelly suggérée est plafonnée à 5% maximum. Ne misez jamais ce que vous ne pouvez pas vous permettre de perdre.
+    **Jeu responsable :** Le pari sportif comporte des risques. Jouez de manière responsable.
+    """)
