@@ -6,6 +6,7 @@ import asian_handicap as ah
 import staking as sk
 import api_connector as api
 import calibration_engine as ce
+import database as db  # 👈 NOUVEL IMPORT
 import pandas as pd
 import datetime
 import os
@@ -26,10 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Ultimate V4 (Calibration Hybride)</p>', unsafe_allow_html=True)
-
-if "historique" not in st.session_state:
-    st.session_state.historique = []
+st.markdown('<p class="sub-title">Ultimate V4 (Base de Données Connectée)</p>', unsafe_allow_html=True)
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
@@ -40,16 +38,27 @@ with st.sidebar:
     api_key = os.environ.get("FOOTBALL_DATA_API_KEY", "")
     
     if api_key:
-        st.success("✅ Clé API connectée au serveur de manière sécurisée.")
+        st.success("✅ Clé API connectée au serveur.")
     else:
-        st.warning("⚠️ Clé API non trouvée dans le serveur. Entre-la manuellement ci-dessous.")
+        st.warning("⚠️ Clé API non trouvée.")
         api_key = st.text_input("Clé API Football-Data.org", type="password")
     
     st.markdown("---")
-    if len(st.session_state.historique) > 0:
-        df_export = pd.DataFrame(st.session_state.historique)
-        csv = df_export.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
+    st.subheader("📁 Mon Historique")
+    
+    # Lecture de la base de données
+    df_hist = db.recuperer_historique()
+    
+    if not df_hist.empty:
+        csv = df_hist.to_csv(index=False).encode('utf-8')
+        st.download_button(label="📥 Télécharger l'historique (CSV)", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
+        
+        if st.button("🗑️ Effacer l'historique", use_container_width=True):
+            db.vider_historique()
+            st.rerun()
+    else:
+        st.info("Aucun Value Bet enregistré pour l'instant.")
+        
     st.caption("HYPER-GOALS 360 V4.0")
 
 # --- FORMULAIRE ---
@@ -66,7 +75,6 @@ with st.form("prediction_form"):
     st.markdown("---")
     st.subheader("⚙️ 2. Récupération des Données")
     
-    # Bouton de récupération API
     bouton_recup = st.form_submit_button("🔄 Récupérer les stats via API")
     
     if bouton_recup:
@@ -84,9 +92,9 @@ with st.form("prediction_form"):
                 else:
                     st.session_state.stats_auto_A = stats_A
                     st.session_state.stats_auto_B = stats_B
-                    st.success("✅ Données récupérées ! Vérifie les chiffres ci-dessous.")
+                    st.success("✅ Données récupérées !")
     
-    # Valeurs par défaut (remplies par l'API si le bouton a été cliqué)
+    # Valeurs par défaut
     defaut_A_marques = st.session_state.stats_auto_A["moy_marques"] if "stats_auto_A" in st.session_state else None
     defaut_A_encaisses = st.session_state.stats_auto_A["moy_encaisses"] if "stats_auto_A" in st.session_state else None
     defaut_A_matchs = st.session_state.stats_auto_A["matchs"] if "stats_auto_A" in st.session_state else 15
@@ -95,7 +103,7 @@ with st.form("prediction_form"):
     defaut_B_encaisses = st.session_state.stats_auto_B["moy_encaisses"] if "stats_auto_B" in st.session_state else None
     defaut_B_matchs = st.session_state.stats_auto_B["matchs"] if "stats_auto_B" in st.session_state else 15
 
-    st.markdown("**Statistiques (Modifiables manuellement si besoin) :**")
+    st.markdown("**Statistiques (Modifiables) :**")
     colA, colB = st.columns(2)
     with colA:
         st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
@@ -108,8 +116,7 @@ with st.form("prediction_form"):
         M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1)
         E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1)
 
-    # Mode Expert
-    with st.expander("⚙️ Mode Expert : Statistiques Avancées (Optionnel)"):
+    with st.expander("⚙️ Mode Expert : Statistiques Avancées"):
         col_exp_A, col_exp_B = st.columns(2)
         with col_exp_A:
             st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
@@ -147,7 +154,6 @@ with st.form("prediction_form"):
     with col_1x2_3:
         cote_2 = st.number_input(f"Victoire {equipe_B.strip() if equipe_B else 'B'}", min_value=1.01, value=None, step=0.05)
 
-    # Le bouton d'analyse final
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
 # --- RÉSULTATS ---
@@ -157,20 +163,19 @@ if submit:
         nom_A = equipe_A.strip()
         nom_B = equipe_B.strip()
 
-        # 1. Shrinkage initial (Modèle de base)
+        # 1. Shrinkage
         M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
         E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
         M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
         E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
         
-        # 2. Lambdas de base (Poisson pur)
+        # 2. Lambdas de base
         lam_A_base = me.calculer_lambda(M_A, E_B, mu)
         lam_B_base = me.calculer_lambda(M_B, E_A, mu)
         
-        # 3. Lambdas Avancés (Si Mode Expert rempli)
+        # 3. Lambdas Avancés
         lam_A_avance = None
         lam_B_avance = None
-        
         if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
             indice_off_A = me.calculer_indice_force(M_A, tirs_A, cadres_A, occasions_A, mu)
             indice_def_B = me.calculer_indice_force(E_B, tirs_B, cadres_B, occasions_B, mu)
@@ -180,24 +185,22 @@ if submit:
             indice_def_A = me.calculer_indice_force(E_A, tirs_A, cadres_A, occasions_A, mu)
             lam_B_avance = (lam_B_base * (indice_off_B + indice_def_A) / 2.0)
 
-        # 4. CALIBRATION HYBRIDE (Le Juge Oméga)
+        # 4. Calibration Oméga
         lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
         lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
         
-        # 5. Dixon-Coles (Matrice corrigée)
+        # 5. Dixon-Coles
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
         st.success(f"✅ Analyse Hybride terminée : **{nom_A}** vs **{nom_B}**")
         
-        # Affichage du statut du Juge (Calibration)
         if confiance_A > 0.8 and confiance_B > 0.8:
-            st.info("🟢 Calibration Optimale : Les modèles xG et Stats Avancées sont en parfait accord.")
+            st.info("🟢 Calibration Optimale : Les modèles sont en accord.")
         elif confiance_A > 0.5 and confiance_B > 0.5:
-            st.warning("🟡 Calibration Modérée : Légère divergence entre les modèles, résultat sécurisé.")
+            st.warning("🟡 Calibration Modérée : Légère divergence.")
         else:
-            st.error("🔴 Calibration Prudente : Les modèles sont en conflit. Le bot a ramené les estimations vers la moyenne pour éviter une erreur.")
+            st.error("🔴 Calibration Prudente : Conflit entre les modèles.")
 
-        # Intervalles de confiance
         ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
         ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
         
@@ -206,7 +209,7 @@ if submit:
         col_res2.metric(f"Buts Calibrés (λ) - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
         col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
         
-        # Calcul des marchés à partir de la matrice Dixon-Coles
+        # Calculs des marchés
         over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
         under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
@@ -218,19 +221,83 @@ if submit:
         res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
         p_win_ah = res_ah["win"] if res_ah["type"] == "normal" else res_ah["full_win"] + 0.5 * res_ah["half_win"]
 
+        # --- NOUVEAU : ENREGISTREMENT DANS LA BASE DE DONNÉES ---
+        # On enregistre le match dans la variable pour l'utiliser dans les fonctions d'ajout
+        nom_match = f"{nom_A} - {nom_B}"
+        nom_ligue = CHAMPIONNATS[ligue_choisie]
+        
+        if cote_ou:
+            ev_ou = sk.calculer_ev(over_line, cote_ou)
+            if ev_ou > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Over {ligne_ou}", over_line*100, cote_ou, ev_ou*100, sk.calculer_kelly(over_line, cote_ou)*100)
+                
+        if cote_btts:
+            ev_btts = sk.calculer_ev(p_btts, cote_btts)
+            if ev_btts > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, "BTTS (Oui)", p_btts*100, cote_btts, ev_btts*100, sk.calculer_kelly(p_btts, cote_btts)*100)
+                
+        if cote_1:
+            ev_1 = sk.calculer_ev(p_A, cote_1)
+            if ev_1 > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Victoire {nom_A}", p_A*100, cote_1, ev_1*100, sk.calculer_kelly(p_A, cote_1)*100)
+                
+        if cote_X:
+            ev_X = sk.calculer_ev(p_Nul, cote_X)
+            if ev_X > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, "Match Nul", p_Nul*100, cote_X, ev_X*100, sk.calculer_kelly(p_Nul, cote_X)*100)
+                
+        if cote_2:
+            ev_2 = sk.calculer_ev(p_B, cote_2)
+            if ev_2 > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Victoire {nom_B}", p_B*100, cote_2, ev_2*100, sk.calculer_kelly(p_B, cote_2)*100)
+                
+        if cote_ah:
+            ev_ah = sk.calculer_ev(p_win_ah, cote_ah)
+            if ev_ah > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Handicap {ligne_choisie}", p_win_ah*100, cote_ah, ev_ah*100, sk.calculer_kelly(p_win_ah, cote_ah)*100)
+        # --------------------------------------------------------
+
         st.markdown("### 📋 Récapitulatif des Marchés")
         data = []
         
-        data.append([f"Over {ligne_ou}", f"{over_line*100:.1f}%", f"{sk.calculer_cote_equitable(over_line):.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{sk.calculer_ev(over_line, cote_ou)*100:+.1f}%" if cote_ou else "-", f"{sk.calculer_kelly(over_line, cote_ou)*100:.1f}%" if cote_ou else "-"])
+        # Over/Under
+        c_fair_over = sk.calculer_cote_equitable(over_line)
+        ev_over = sk.calculer_ev(over_line, cote_ou) if cote_ou else 0
+        kelly_over = sk.calculer_kelly(over_line, cote_ou) if cote_ou else 0
+        data.append([f"Over {ligne_ou}", f"{over_line*100:.1f}%", f"{c_fair_over:.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{ev_over*100:+.1f}%" if cote_ou else "-", f"{kelly_over*100:.1f}%" if cote_ou else "-"])
+        
         if push_line > 0:
-            data.append([f"Push {ligne_ou} (Remboursé)", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
+            data.append([f"Push {ligne_ou}", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
+        
         data.append([f"Under {ligne_ou}", f"{under_line*100:.1f}%", f"{sk.calculer_cote_equitable(under_line):.2f}", "-", "-", "-"])
         
-        data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{sk.calculer_cote_equitable(p_btts):.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{sk.calculer_ev(p_btts, cote_btts)*100:+.1f}%" if cote_btts else "-", f"{sk.calculer_kelly(p_btts, cote_btts)*100:.1f}%" if cote_btts else "-"])
-        data.append([f"Victoire {nom_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
-        data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{sk.calculer_cote_equitable(p_Nul):.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{sk.calculer_ev(p_Nul, cote_X)*100:+.1f}%" if cote_X else "-", f"{sk.calculer_kelly(p_Nul, cote_X)*100:.1f}%" if cote_X else "-"])
-        data.append([f"Victoire {nom_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
-        data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{sk.calculer_cote_equitable(p_win_ah):.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{sk.calculer_ev(p_win_ah, cote_ah)*100:+.1f}%" if cote_ah else "-", f"{sk.calculer_kelly(p_win_ah, cote_ah)*100:.1f}%" if cote_ah else "-"])
+        # BTTS
+        c_fair_btts = sk.calculer_cote_equitable(p_btts)
+        ev_btts = sk.calculer_ev(p_btts, cote_btts) if cote_btts else 0
+        kelly_btts = sk.calculer_kelly(p_btts, cote_btts) if cote_btts else 0
+        data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{c_fair_btts:.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{ev_btts*100:+.1f}%" if cote_btts else "-", f"{kelly_btts*100:.1f}%" if cote_btts else "-"])
+        
+        # 1X2
+        c_fair_1 = sk.calculer_cote_equitable(p_A)
+        ev_1 = sk.calculer_ev(p_A, cote_1) if cote_1 else 0
+        kelly_1 = sk.calculer_kelly(p_A, cote_1) if cote_1 else 0
+        data.append([f"Victoire {nom_A}", f"{p_A*100:.1f}%", f"{c_fair_1:.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{ev_1*100:+.1f}%" if cote_1 else "-", f"{kelly_1*100:.1f}%" if cote_1 else "-"])
+        
+        c_fair_X = sk.calculer_cote_equitable(p_Nul)
+        ev_X = sk.calculer_ev(p_Nul, cote_X) if cote_X else 0
+        kelly_X = sk.calculer_kelly(p_Nul, cote_X) if cote_X else 0
+        data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{c_fair_X:.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{ev_X*100:+.1f}%" if cote_X else "-", f"{kelly_X*100:.1f}%" if cote_X else "-"])
+        
+        c_fair_2 = sk.calculer_cote_equitable(p_B)
+        ev_2 = sk.calculer_ev(p_B, cote_2) if cote_2 else 0
+        kelly_2 = sk.calculer_kelly(p_B, cote_2) if cote_2 else 0
+        data.append([f"Victoire {nom_B}", f"{p_B*100:.1f}%", f"{c_fair_2:.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{ev_2*100:+.1f}%" if cote_2 else "-", f"{kelly_2*100:.1f}%" if cote_2 else "-"])
+        
+        # Handicap
+        c_fair_ah = sk.calculer_cote_equitable(p_win_ah)
+        ev_ah = sk.calculer_ev(p_win_ah, cote_ah) if cote_ah else 0
+        kelly_ah = sk.calculer_kelly(p_win_ah, cote_ah) if cote_ah else 0
+        data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{c_fair_ah:.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{ev_ah*100:+.1f}%" if cote_ah else "-", f"{kelly_ah*100:.1f}%" if cote_ah else "-"])
         
         df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
         st.dataframe(
