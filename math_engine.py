@@ -44,3 +44,24 @@ def calculer_score_exact(lam_A, lam_B, score_A, score_B):
     proba_A = proba_poisson(score_A, lam_A)
     proba_B = proba_poisson(score_B, lam_B)
     return proba_A * proba_B
+
+def calculer_indice_force(xG, tirs, tirs_cadres, occasions, moyenne_ligue):
+    """
+    Calcule un indice de force (O_i ou V_i) en normalisant les stats.
+    Puisque nous n'avons pas de Z-score global (on est en saisie manuelle), 
+    on fait une moyenne pondérée par rapport aux moyennes de championnat.
+    """
+    # Moyennes de référence pour un match de foot typique (approximatives)
+    ref_tirs = 12.0
+    ref_tirs_cadres = 4.0
+    ref_occasions = 2.0
+    
+    # On ramène chaque stat sur une base de 1.0 (la moyenne)
+    score_xg = xG / moyenne_ligue if moyenne_ligue > 0 else 1.0
+    score_tirs = tirs / ref_tirs if ref_tirs > 0 else 1.0
+    score_cadres = tirs_cadres / ref_tirs_cadres if ref_tirs_cadres > 0 else 1.0
+    score_occasions = occasions / ref_occasions if ref_occasions > 0 else 1.0
+    
+    # Pondération : le xG pèse 50%, les tirs 20%, les cadrés 20%, les occasions 10%
+    indice = (0.5 * score_xg) + (0.2 * score_tirs) + (0.2 * score_cadres) + (0.1 * score_occasions)
+    return indice
