@@ -7,7 +7,7 @@ DB_NAME = "hg360_database.db"
 def initialiser_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Ajout de la colonne 'resultat' (par défaut NULL)
+    # Table historique des paris
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS historique (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,10 +16,19 @@ def initialiser_db():
             resultat INTEGER DEFAULT NULL
         )
     """)
+    # Table bankroll
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bankroll (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT, type TEXT, montant REAL, description TEXT
+        )
+    """)
+    # NOUVEAU : Table mémoire GAMMA-X (R3)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS memoire_equipes (
+            equipe TEXT PRIMARY KEY,
+            erreur_moyenne REAL DEFAULT 0.0,
+            nb_observations INTEGER DEFAULT 0
         )
     """)
     conn.commit()
@@ -42,10 +51,54 @@ def recuperer_historique():
     conn.close()
     return df
 
-def maj_resultat(id_pari, resultat):
-    """Met à jour le résultat d'un pari (1 = Gagné, 0 = Perdu)"""
+def recuperer_memoire_equipe(equipe):
+    """Récupère l'erreur moyenne mémorisée pour une équipe (R3)"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
+    cursor.execute("SELECT erreur_moyenne FROM memoire_equipes WHERE equipe = ?", (equipe,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else 0.0
+
+def mettre_a_jour_memoire(equipe, erreur_actuelle, alpha=0.3):
+    """Met à jour la mémoire (Moyenne Mobile Exponentielle)"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT erreur_moyenne, nb_observations FROM memoire_equipes WHERE equipe = ?", (equipe,))
+    result = cursor.fetchone()
+    
+    if result:
+        ancienne_erreur, nb_obs = result
+        nouvelle_erreur = (alpha * erreur_actuelle) + ((1 - alpha) * ancienne_erreur)
+        cursor.execute("UPDATE memoire_equipes SET erreur_moyenne = ?, nb_observations = ? WHERE equipe = ?", (nouvelle_erreur, nb_obs + 1, equipe))
+    else:
+        cursor.execute("INSERT INTO memoire_equipes (equipe, erreur_moyenne, nb_observations) VALUES (?, ?, 1)", (equipe, erreur_actuelle))
+        
+    conn.commit()
+    conn.close()
+
+def maj_resultat(id_pari, resultat):
+    """Met à jour le résultat et APPREND de l'erreur pour GAMMA-X"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # 1. Récupérer les infos du pari
+    cursor.execute("SELECT match, probabilite FROM historique WHERE id = ?", (id_pari,))
+    row = cursor.fetchone()
+    
+    if row:
+        match_str, proba_pct = row
+        proba = proba_pct / 100.0
+        # L'erreur est la différence entre le résultat (1 ou 0) et la proba
+        erreur = resultat - proba 
+        
+        # 2. Extraire les noms d'équipes (ex: "Arsenal - Chelsea")
+        if " - " in match_str:
+            equipe_A, equipe_B = match_str.split(" - ")
+            mettre_a_jour_memoire(equipe_A.strip(), erreur)
+            mettre_a_jour_memoire(equipe_B.strip(), erreur)
+
     cursor.execute("UPDATE historique SET resultat = ? WHERE id = ?", (resultat, id_pari))
     conn.commit()
     conn.close()
@@ -74,11 +127,5 @@ def recuperer_solde():
         if row['type'] in ['depot', 'gain']: solde += row['montant']
         else: solde -= row['montant']
     return solde
-
-def recuperer_transactions():
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT * FROM bankroll ORDER BY id DESC", conn)
-    conn.close()
-    return df
 
 initialiser_db()
