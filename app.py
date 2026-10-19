@@ -34,7 +34,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Ultimate V7 (Auto-Apprentissage GAMMA-X)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Ultimate V8 (Scanner Intelligent)</p>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=50)
@@ -71,10 +71,13 @@ with st.sidebar:
             st.rerun()
     else:
         st.caption("Aucun pari enregistré.")
-    st.caption("HYPER-GOALS 360 V7.0")
+    st.caption("HYPER-GOALS 360 V8.0")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔍 Analyse Simple", "🌳 Écologie du But", "📡 Radar Multi-Matchs", "📊 Calibration & Brier"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Analyse Simple", "🌳 Écologie du But", "📡 Scanner Intelligent", "📊 Calibration & Brier"])
 
+# ==========================================
+# ONGLET 1 : ANALYSE SIMPLE (Formulaire)
+# ==========================================
 with tab1:
     st.subheader("📊 1. Sélection du Match")
     liste_affichage = list(CHAMPIONNATS.keys()) + ["COUPE_NATIONALE"]
@@ -211,170 +214,174 @@ with tab1:
 
         submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
-if submit:
-    if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
-        
-        nom_A = equipe_A.strip()
-        nom_B = equipe_B.strip()
-        
-        M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
-        E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
-        M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
-        E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
-        
-        lam_A_base = me.calculer_lambda(M_A, E_B, mu)
-        lam_B_base = me.calculer_lambda(M_B, E_A, mu)
-        
-        lam_A_avance = None
-        lam_B_avance = None
-        if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
-            indice_off_A = me.calculer_indice_force(M_A, tirs_A, cadres_A, occasions_A, mu)
-            indice_def_B = me.calculer_indice_force(E_B, tirs_B, cadres_B, occasions_B, mu)
-            lam_A_avance = (lam_A_base * (indice_off_A + indice_def_B) / 2.0)
-            indice_off_B = me.calculer_indice_force(M_B, tirs_B, cadres_B, occasions_B, mu)
-            indice_def_A = me.calculer_indice_force(E_A, tirs_A, cadres_A, occasions_A, mu)
-            lam_B_avance = (lam_B_base * (indice_off_B + indice_def_A) / 2.0)
-
-        lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
-        lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
-        
-        if all(v is not None for v in [pos_A, box_A, ppda_A, pos_B, box_B, ppda_B]):
-            indice_A = me.calculer_indice_v5(pos_A, box_A, ppda_A, qual_A)
-            indice_B = me.calculer_indice_v5(pos_B, box_B, ppda_B, qual_B)
+# ==========================================
+# ONGLET 1 : RÉSULTATS (Suite du bloc 2)
+# ==========================================
+    if submit:
+        if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
             
-            impact_A = math.exp(0.5 * (indice_A - 1))
-            impact_B = math.exp(0.5 * (indice_B - 1))
+            nom_A = equipe_A.strip()
+            nom_B = equipe_B.strip()
             
-            lam_A = lam_A * impact_A
-            lam_B = lam_B * impact_B
-            st.info(f"🔥 Indice de Domination V5 appliqué : Impact A = x{impact_A:.2f} | Impact B = x{impact_B:.2f}")
-
-        # --- NOUVEAU : GAMMA-X (Rétroaction & Mémoire) ---
-        erreur_memoire_A = db.recuperer_memoire_equipe(nom_A)
-        erreur_memoire_B = db.recuperer_memoire_equipe(nom_B)
-        
-        lam_A_avant = lam_A
-        lam_B_avant = lam_B
-        
-        lam_A = gx.appliquer_correction_multiplicative(lam_A, erreur_memoire_A)
-        lam_B = gx.appliquer_correction_multiplicative(lam_B, erreur_memoire_B)
-        
-        if abs(lam_A - lam_A_avant) > 0.05 or abs(lam_B - lam_B_avant) > 0.05:
-            st.warning(f"🧠 **Correction GAMMA-X** : Ajustement basé sur l'historique des erreurs. λ_{nom_A} : {lam_A_avant:.2f} ➡️ {lam_A:.2f} | λ_{nom_B} : {lam_B_avant:.2f} ➡️ {lam_B:.2f}")
-        # --------------------------------------------------
-
-        matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
-        
-        st.success(f"✅ Analyse V7 terminée : **{nom_A}** vs **{nom_B}**")
-        if confiance_A > 0.8 and confiance_B > 0.8: st.info("🟢 Calibration Oméga Optimale.")
-        elif confiance_A > 0.5 and confiance_B > 0.5: st.warning("🟡 Calibration Modérée.")
-        else: st.error("🔴 Calibration Prudente (Conflit).")
-
-        ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
-        ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
-        
-        col_res1, col_res2, col_res3 = st.columns(3)
-        col_res1.metric(f"λ V7 - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
-        col_res2.metric(f"λ V7 - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
-        col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
-        
-        over_line_analytique = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
-        mc_res = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=1000)
-        over_line_mc = mc_res['over_25']
-        
-        probas_modeles = [over_line_analytique, over_line_mc]
-        if lam_A_avance is not None:
-            probas_modeles.append((over_line_analytique * 0.95)) 
+            M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
+            E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
+            M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
+            E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
             
-        dispersion = gm.evaluer_dispersion(probas_modeles)
-        msg_dispersion = gm.interpreter_dispersion(dispersion)
-        
-        st.markdown("### 🧠 Analyse de Cohérence (GOAL MATRIX)")
-        st.info(f"**Indice de Dispersion : {dispersion:.5f}**")
-        st.write(msg_dispersion)
+            lam_A_base = me.calculer_lambda(M_A, E_B, mu)
+            lam_B_base = me.calculer_lambda(M_B, E_A, mu)
+            
+            lam_A_avance = None
+            lam_B_avance = None
+            if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
+                indice_off_A = me.calculer_indice_force(M_A, tirs_A, cadres_A, occasions_A, mu)
+                indice_def_B = me.calculer_indice_force(E_B, tirs_B, cadres_B, occasions_B, mu)
+                lam_A_avance = (lam_A_base * (indice_off_A + indice_def_B) / 2.0)
+                indice_off_B = me.calculer_indice_force(M_B, tirs_B, cadres_B, occasions_B, mu)
+                indice_def_A = me.calculer_indice_force(E_A, tirs_A, cadres_A, occasions_A, mu)
+                lam_B_avance = (lam_B_base * (indice_off_B + indice_def_A) / 2.0)
 
-        with st.expander("🎲 Simulation Monte Carlo (10 000 matchs)", expanded=False):
-            mc_resultats = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=10000)
-            col_mc1, col_mc2, col_mc3 = st.columns(3)
-            col_mc1.metric("Over 2.5 (MC)", f"{mc_resultats['over_25']*100:.1f}%")
-            col_mc2.metric("BTTS (MC)", f"{mc_resultats['btts']*100:.1f}%")
-            col_mc3.metric("Victoire A (MC)", f"{mc_resultats['victoire_A']*100:.1f}%")
+            lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
+            lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
+            
+            if all(v is not None for v in [pos_A, box_A, ppda_A, pos_B, box_B, ppda_B]):
+                indice_A = me.calculer_indice_v5(pos_A, box_A, ppda_A, qual_A)
+                indice_B = me.calculer_indice_v5(pos_B, box_B, ppda_B, qual_B)
+                
+                impact_A = math.exp(0.5 * (indice_A - 1))
+                impact_B = math.exp(0.5 * (indice_B - 1))
+                
+                lam_A = lam_A * impact_A
+                lam_B = lam_B * impact_B
+                st.info(f"🔥 Indice de Domination V5 appliqué : Impact A = x{impact_A:.2f} | Impact B = x{impact_B:.2f}")
 
-        over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
-        push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
-        under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
-        p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
-        p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
-        p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
-        p_B = sum(p for (i, j), p in matrice_dc.items() if i < j)
-        
-        res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
-        p_win_ah = res_ah["win"] if res_ah["type"] == "normal" else res_ah["full_win"] + 0.5 * res_ah["half_win"]
+            erreur_memoire_A = db.recuperer_memoire_equipe(nom_A)
+            erreur_memoire_B = db.recuperer_memoire_equipe(nom_B)
+            
+            lam_A_avant = lam_A
+            lam_B_avant = lam_B
+            
+            lam_A = gx.appliquer_correction_multiplicative(lam_A, erreur_memoire_A)
+            lam_B = gx.appliquer_correction_multiplicative(lam_B, erreur_memoire_B)
+            
+            if abs(lam_A - lam_A_avant) > 0.05 or abs(lam_B - lam_B_avant) > 0.05:
+                st.warning(f"🧠 **Correction GAMMA-X** : Ajustement basé sur l'historique des erreurs. λ_{nom_A} : {lam_A_avant:.2f} ➡️ {lam_A:.2f} | λ_{nom_B} : {lam_B_avant:.2f} ➡️ {lam_B:.2f}")
 
-        nom_match = f"{nom_A} - {nom_B}"
-        nom_ligue = CHAMPIONNATS.get(ligue_choisie, "Coupe Nationale")
-        
-        if cote_ou and sk.calculer_ev(over_line, cote_ou) > 0:
-            db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Over {ligne_ou}", over_line*100, cote_ou, sk.calculer_ev(over_line, cote_ou)*100, sk.calculer_kelly(over_line, cote_ou)*100)
-        if cote_btts and sk.calculer_ev(p_btts, cote_btts) > 0:
-            db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, "BTTS (Oui)", p_btts*100, cote_btts, sk.calculer_ev(p_btts, cote_btts)*100, sk.calculer_kelly(p_btts, cote_btts)*100)
-        if cote_1 and sk.calculer_ev(p_A, cote_1) > 0:
-            db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Victoire {nom_A}", p_A*100, cote_1, sk.calculer_ev(p_A, cote_1)*100, sk.calculer_kelly(p_A, cote_1)*100)
-        if cote_X and sk.calculer_ev(p_Nul, cote_X) > 0:
-            db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, "Match Nul", p_Nul*100, cote_X, sk.calculer_ev(p_Nul, cote_X)*100, sk.calculer_kelly(p_Nul, cote_X)*100)
-        if cote_2 and sk.calculer_ev(p_B, cote_2) > 0:
-            db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Victoire {nom_B}", p_B*100, cote_2, sk.calculer_ev(p_B, cote_2)*100, sk.calculer_kelly(p_B, cote_2)*100)
-        if cote_ah and sk.calculer_ev(p_win_ah, cote_ah) > 0:
-            db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Handicap {ligne_choisie}", p_win_ah*100, cote_ah, sk.calculer_ev(p_win_ah, cote_ah)*100, sk.calculer_kelly(p_win_ah, cote_ah)*100)
+            matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
+            
+            st.success(f"✅ Analyse V8 terminée : **{nom_A}** vs **{nom_B}**")
+            if confiance_A > 0.8 and confiance_B > 0.8: st.info("🟢 Calibration Oméga Optimale.")
+            elif confiance_A > 0.5 and confiance_B > 0.5: st.warning("🟡 Calibration Modérée.")
+            else: st.error("🔴 Calibration Prudente (Conflit).")
 
-        st.markdown("### 📋 Récapitulatif des Marchés")
-        data = []
-        data.append([f"Over {ligne_ou}", f"{over_line*100:.1f}%", f"{sk.calculer_cote_equitable(over_line):.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{sk.calculer_ev(over_line, cote_ou)*100:+.1f}%" if cote_ou else "-", f"{sk.calculer_kelly(over_line, cote_ou)*100:.1f}%" if cote_ou else "-"])
-        if push_line > 0: data.append([f"Push {ligne_ou}", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
-        data.append([f"Under {ligne_ou}", f"{under_line*100:.1f}%", f"{sk.calculer_cote_equitable(under_line):.2f}", "-", "-", "-"])
-        data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{sk.calculer_cote_equitable(p_btts):.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{sk.calculer_ev(p_btts, cote_btts)*100:+.1f}%" if cote_btts else "-", f"{sk.calculer_kelly(p_btts, cote_btts)*100:.1f}%" if cote_btts else "-"])
-        data.append([f"Victoire {nom_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
-        data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{sk.calculer_cote_equitable(p_Nul):.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{sk.calculer_ev(p_Nul, cote_X)*100:+.1f}%" if cote_X else "-", f"{sk.calculer_kelly(p_Nul, cote_X)*100:.1f}%" if cote_X else "-"])
-        data.append([f"Victoire {nom_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
-        data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{sk.calculer_cote_equitable(p_win_ah):.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{sk.calculer_ev(p_win_ah, cote_ah)*100:+.1f}%" if cote_ah else "-", f"{sk.calculer_kelly(p_win_ah, cote_ah)*100:.1f}%" if cote_ah else "-"])
-        
-        df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
-        st.dataframe(df_markets.style.format({"Probabilité": "{}", "Cote Équitable": "{}", "Cote Book": "{}", "EV": "{}", "Mise Kelly": "{}"}).map(lambda x: 'color: #00e676' if isinstance(x, str) and x.startswith('+') else ('color: #ff5252' if isinstance(x, str) and x.startswith('-') and x != '-' else 'color: white'), subset=["EV"]), use_container_width=True, hide_index=True)
+            ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
+            ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
+            
+            col_res1, col_res2, col_res3 = st.columns(3)
+            col_res1.metric(f"λ V8 - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
+            col_res2.metric(f"λ V8 - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
+            col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
+            
+            over_line_analytique = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
+            mc_res = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=1000)
+            over_line_mc = mc_res['over_25']
+            
+            probas_modeles = [over_line_analytique, over_line_mc]
+            if lam_A_avance is not None:
+                probas_modeles.append((over_line_analytique * 0.95)) 
+                
+            dispersion = gm.evaluer_dispersion(probas_modeles)
+            msg_dispersion = gm.interpreter_dispersion(dispersion)
+            
+            st.markdown("### 🧠 Analyse de Cohérence (GOAL MATRIX)")
+            st.info(f"**Indice de Dispersion : {dispersion:.5f}**")
+            st.write(msg_dispersion)
 
-        st.markdown(f"### 🎯 Matrice des Scores")
-        matrice_scores = [[matrice_dc.get((i, j), 0) * 100 for j in range(5)] for i in range(5)]
-        df_scores = pd.DataFrame(matrice_scores, index=[f"{i} but(s) {nom_A}" for i in range(5)], columns=[f"{j} but(s) {nom_B}" for j in range(5)])
-        st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
+            with st.expander("🎲 Simulation Monte Carlo (10 000 matchs)", expanded=False):
+                mc_resultats = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=10000)
+                col_mc1, col_mc2, col_mc3 = st.columns(3)
+                col_mc1.metric("Over 2.5 (MC)", f"{mc_resultats['over_25']*100:.1f}%")
+                col_mc2.metric("BTTS (MC)", f"{mc_resultats['btts']*100:.1f}%")
+                col_mc3.metric("Victoire A (MC)", f"{mc_resultats['victoire_A']*100:.1f}%")
 
-        st.markdown("---")
-        st.markdown("### 🔮 Simulateur Contrefactuel (What-If)")
-        st.write("Ajuste artificiellement la performance des équipes pour voir l'impact sur les probabilités.")
-        
-        col_cf1, col_cf2 = st.columns(2)
-        with col_cf1:
-            impact_A_pct = st.slider("Ajustement Performance Équipe A (%)", -50, 50, 0, step=5, key="k_cf_A")
-        with col_cf2:
-            impact_B_pct = st.slider("Ajustement Performance Équipe B (%)", -50, 50, 0, step=5, key="k_cf_B")
-        
-        mult_A = 1 + (impact_A_pct / 100)
-        mult_B = 1 + (impact_B_pct / 100)
-        
-        lam_A_cf = lam_A * mult_A
-        lam_B_cf = lam_B * mult_B
-        
-        matrice_cf = dc.appliquer_correction(lam_A_cf, lam_B_cf, rho)
-        
-        over_cf = sum(p for (i, j), p in matrice_cf.items() if i + j > ligne_ou)
-        btts_cf = sum(p for (i, j), p in matrice_cf.items() if i > 0 and j > 0)
-        victoire_A_cf = sum(p for (i, j), p in matrice_cf.items() if i > j)
-        
-        col_cf_res1, col_cf_res2, col_cf_res3 = st.columns(3)
-        col_cf_res1.metric(f"Over {ligne_ou} (Contrefactuel)", f"{over_cf*100:.1f}%", delta=f"{(over_cf - over_line)*100:+.1f}%" if over_cf != over_line else "0%")
-        col_cf_res2.metric("BTTS (Contrefactuel)", f"{btts_cf*100:.1f}%", delta=f"{(btts_cf - p_btts)*100:+.1f}%" if btts_cf != p_btts else "0%")
-        col_cf_res3.metric(f"Victoire {nom_A} (Contrefactuel)", f"{victoire_A_cf*100:.1f}%", delta=f"{(victoire_A_cf - p_A)*100:+.1f}%" if victoire_A_cf != p_A else "0%")
-    else:
-        st.warning("⚠️ Remplis les noms et les stats.")
+            over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
+            push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
+            under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
+            p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
+            p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
+            p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
+            p_B = sum(p for (i, j), p in matrice_dc.items() if i < j)
+            
+            res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
+            p_win_ah = res_ah["win"] if res_ah["type"] == "normal" else res_ah["full_win"] + 0.5 * res_ah["half_win"]
 
+            nom_match = f"{nom_A} - {nom_B}"
+            nom_ligue = CHAMPIONNATS.get(ligue_choisie, "Coupe Nationale")
+            
+            if cote_ou and sk.calculer_ev(over_line, cote_ou) > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Over {ligne_ou}", over_line*100, cote_ou, sk.calculer_ev(over_line, cote_ou)*100, sk.calculer_kelly(over_line, cote_ou)*100)
+            if cote_btts and sk.calculer_ev(p_btts, cote_btts) > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, "BTTS (Oui)", p_btts*100, cote_btts, sk.calculer_ev(p_btts, cote_btts)*100, sk.calculer_kelly(p_btts, cote_btts)*100)
+            if cote_1 and sk.calculer_ev(p_A, cote_1) > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Victoire {nom_A}", p_A*100, cote_1, sk.calculer_ev(p_A, cote_1)*100, sk.calculer_kelly(p_A, cote_1)*100)
+            if cote_X and sk.calculer_ev(p_Nul, cote_X) > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, "Match Nul", p_Nul*100, cote_X, sk.calculer_ev(p_Nul, cote_X)*100, sk.calculer_kelly(p_Nul, cote_X)*100)
+            if cote_2 and sk.calculer_ev(p_B, cote_2) > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Victoire {nom_B}", p_B*100, cote_2, sk.calculer_ev(p_B, cote_2)*100, sk.calculer_kelly(p_B, cote_2)*100)
+            if cote_ah and sk.calculer_ev(p_win_ah, cote_ah) > 0:
+                db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Handicap {ligne_choisie}", p_win_ah*100, cote_ah, sk.calculer_ev(p_win_ah, cote_ah)*100, sk.calculer_kelly(p_win_ah, cote_ah)*100)
+
+            st.markdown("### 📋 Récapitulatif des Marchés")
+            data = []
+            data.append([f"Over {ligne_ou}", f"{over_line*100:.1f}%", f"{sk.calculer_cote_equitable(over_line):.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{sk.calculer_ev(over_line, cote_ou)*100:+.1f}%" if cote_ou else "-", f"{sk.calculer_kelly(over_line, cote_ou)*100:.1f}%" if cote_ou else "-"])
+            if push_line > 0: data.append([f"Push {ligne_ou}", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
+            data.append([f"Under {ligne_ou}", f"{under_line*100:.1f}%", f"{sk.calculer_cote_equitable(under_line):.2f}", "-", "-", "-"])
+            data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{sk.calculer_cote_equitable(p_btts):.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{sk.calculer_ev(p_btts, cote_btts)*100:+.1f}%" if cote_btts else "-", f"{sk.calculer_kelly(p_btts, cote_btts)*100:.1f}%" if cote_btts else "-"])
+            data.append([f"Victoire {nom_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
+            data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{sk.calculer_cote_equitable(p_Nul):.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{sk.calculer_ev(p_Nul, cote_X)*100:+.1f}%" if cote_X else "-", f"{sk.calculer_kelly(p_Nul, cote_X)*100:.1f}%" if cote_X else "-"])
+            data.append([f"Victoire {nom_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
+            data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{sk.calculer_cote_equitable(p_win_ah):.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{sk.calculer_ev(p_win_ah, cote_ah)*100:+.1f}%" if cote_ah else "-", f"{sk.calculer_kelly(p_win_ah, cote_ah)*100:.1f}%" if cote_ah else "-"])
+            
+            df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
+            st.dataframe(df_markets.style.format({"Probabilité": "{}", "Cote Équitable": "{}", "Cote Book": "{}", "EV": "{}", "Mise Kelly": "{}"}).map(lambda x: 'color: #00e676' if isinstance(x, str) and x.startswith('+') else ('color: #ff5252' if isinstance(x, str) and x.startswith('-') and x != '-' else 'color: white'), subset=["EV"]), use_container_width=True, hide_index=True)
+
+            st.markdown(f"### 🎯 Matrice des Scores")
+            matrice_scores = [[matrice_dc.get((i, j), 0) * 100 for j in range(5)] for i in range(5)]
+            df_scores = pd.DataFrame(matrice_scores, index=[f"{i} but(s) {nom_A}" for i in range(5)], columns=[f"{j} but(s) {nom_B}" for j in range(5)])
+            st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 🔮 Simulateur Contrefactuel (What-If)")
+            st.write("Ajuste artificiellement la performance des équipes pour voir l'impact sur les probabilités.")
+            
+            col_cf1, col_cf2 = st.columns(2)
+            with col_cf1:
+                impact_A_pct = st.slider("Ajustement Performance Équipe A (%)", -50, 50, 0, step=5, key="k_cf_A")
+            with col_cf2:
+                impact_B_pct = st.slider("Ajustement Performance Équipe B (%)", -50, 50, 0, step=5, key="k_cf_B")
+            
+            mult_A = 1 + (impact_A_pct / 100)
+            mult_B = 1 + (impact_B_pct / 100)
+            
+            lam_A_cf = lam_A * mult_A
+            lam_B_cf = lam_B * mult_B
+            
+            matrice_cf = dc.appliquer_correction(lam_A_cf, lam_B_cf, rho)
+            
+            over_cf = sum(p for (i, j), p in matrice_cf.items() if i + j > ligne_ou)
+            btts_cf = sum(p for (i, j), p in matrice_cf.items() if i > 0 and j > 0)
+            victoire_A_cf = sum(p for (i, j), p in matrice_cf.items() if i > j)
+            
+            col_cf_res1, col_cf_res2, col_cf_res3 = st.columns(3)
+            col_cf_res1.metric(f"Over {ligne_ou} (Contrefactuel)", f"{over_cf*100:.1f}%", delta=f"{(over_cf - over_line)*100:+.1f}%" if over_cf != over_line else "0%")
+            col_cf_res2.metric("BTTS (Contrefactuel)", f"{btts_cf*100:.1f}%", delta=f"{(btts_cf - p_btts)*100:+.1f}%" if btts_cf != p_btts else "0%")
+            col_cf_res3.metric(f"Victoire {nom_A} (Contrefactuel)", f"{victoire_A_cf*100:.1f}%", delta=f"{(victoire_A_cf - p_A)*100:+.1f}%" if victoire_A_cf != p_A else "0%")
+        else:
+            st.warning("⚠️ Remplis les noms et les stats.")
+
+# ==========================================
+# ONGLET 2 : ÉCOLOGIE DU BUT
+# ==========================================
 with tab2:
     st.subheader("🌳 Écologie du But - Analyse Contextuelle")
     st.write("Notez chaque couche de 0 à 10 pour évaluer la pression offensive réelle, au-delà des simples statistiques.")
@@ -415,12 +422,21 @@ with tab2:
         
         st.info("💡 **Conseil de Pro** : Utilise cet indice comme un filtre. Si l'indice est très bas (Under) mais que l'Analyse Simple (Modèle Oméga) donne un Over 2.5 élevé, il y a un conflit. Le vrai Value Bet apparaît quand les deux modèles sont d'accord !")
 
+# ==========================================
+# ONGLET 3 : SCANNER INTELLIGENT (V8)
+# ==========================================
 with tab3:
-    st.subheader("📡 Radar des Matchs à Venir")
-    st.write("Le radar va chercher les prochains matchs de la ligue sélectionnée et calcule les probabilités de base (Over 2.5 / BTTS).")
+    st.subheader("📡 Scanner Intelligent (GAMMA-X Activé)")
+    st.write("Le scanner va chercher les prochains matchs, appliquer les corrections GAMMA-X, et afficher uniquement les matchs qui dépassent ton seuil de probabilité.")
     
-    ligue_radar = st.selectbox("Choisir la ligue à scanner", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_radar")
-    
+    col_scan1, col_scan2, col_scan3 = st.columns(3)
+    with col_scan1:
+        ligue_radar = st.selectbox("Choisir la ligue à scanner", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_radar")
+    with col_scan2:
+        seuil_over = st.slider("Probabilité minimale Over 2.5 (%)", 0, 100, 50, step=5, key="k_seuil_over")
+    with col_scan3:
+        seuil_btts = st.slider("Probabilité minimale BTTS (%)", 0, 100, 50, step=5, key="k_seuil_btts")
+        
     if st.button("🚀 Lancer le Scanner (Max 5 matchs)", key="k_btn_radar"):
         if not api_key:
             st.error("Clé API requise dans le menu de gauche.")
@@ -450,29 +466,42 @@ with tab3:
                             lam_A = me.calculer_lambda(M_A, E_B, mu_radar)
                             lam_B = me.calculer_lambda(M_B, E_A, mu_radar)
                             
+                            # --- GAMMA-X : Application de la mémoire des erreurs ---
+                            err_A = db.recuperer_memoire_equipe(eq_A)
+                            err_B = db.recuperer_memoire_equipe(eq_B)
+                            lam_A = gx.appliquer_correction_multiplicative(lam_A, err_A)
+                            lam_B = gx.appliquer_correction_multiplicative(lam_B, err_B)
+                            # -----------------------------------------------------
+                            
                             matrice_dc = dc.appliquer_correction(lam_A, lam_B, -0.05)
                             
                             over_25 = sum(p for (i, j), p in matrice_dc.items() if i + j > 2.5)
                             p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
                             p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
                             
-                            resultats_radar.append({
-                                "Date": m["date"],
-                                "Match": f"{eq_A} vs {eq_B}",
-                                "λ A": f"{lam_A:.2f}",
-                                "λ B": f"{lam_B:.2f}",
-                                "Over 2.5": f"{over_25*100:.1f}%",
-                                "BTTS": f"{p_btts*100:.1f}%",
-                                "Victoire A": f"{p_A*100:.1f}%"
-                            })
+                            # Filtre : On n'ajoute au tableau que si ça dépasse les seuils
+                            if (over_25 * 100 >= seuil_over) or (p_btts * 100 >= seuil_btts):
+                                resultats_radar.append({
+                                    "Date": m["date"],
+                                    "Match": f"{eq_A} vs {eq_B}",
+                                    "λ A": f"{lam_A:.2f}",
+                                    "λ B": f"{lam_B:.2f}",
+                                    "Over 2.5": f"{over_25*100:.1f}%",
+                                    "BTTS": f"{p_btts*100:.1f}%",
+                                    "Victoire A": f"{p_A*100:.1f}%"
+                                })
                     
                     if resultats_radar:
+                        st.success(f"✅ {len(resultats_radar)} match(s) correspond(ent) à tes critères !")
                         df_radar = pd.DataFrame(resultats_radar)
                         st.dataframe(df_radar, use_container_width=True, hide_index=True)
-                        st.info("💡 Pour trouver des Value Bets, compare ces probabilités avec les cotes de ton bookmaker dans l'onglet 'Analyse Simple'.")
+                        st.info("💡 **Next Step** : Note ces matchs, va dans l'onglet 'Analyse Simple' pour récupérer les cotes du bookmaker et voir les Value Bets.")
                     else:
-                        st.error("Impossible de récupérer les stats des équipes (limite API atteinte ?).")
+                        st.warning("Aucun match ne dépasse tes seuils de probabilité sur ce scan.")
 
+# ==========================================
+# ONGLET 4 : CALIBRATION & BRIER SCORE
+# ==========================================
 with tab4:
     st.subheader("📊 Dashboard de Calibration")
     st.write("Ici, tu peux vérifier si les probabilités de ton bot sont fiables (Brier Score) et lui apprendre de ses erreurs.")
