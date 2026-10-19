@@ -1,6 +1,7 @@
 import streamlit as st
 from leagues import CHAMPIONNATS
 import math_engine as me
+import pandas as pd
 
 # 1. Configuration de la page
 st.set_page_config(page_title="HYPER-GOALS 360 | Pro", page_icon="⚽", layout="wide")
@@ -62,7 +63,6 @@ if submit:
         lam_A = me.calculer_lambda(M_A, E_B, mu)
         lam_B = me.calculer_lambda(M_B, E_A, mu)
         
-        # Affichage des résultats
         st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}** ({CHAMPIONNATS[ligue_choisie]})")
         
         # Cartes de buts attendus
@@ -78,23 +78,31 @@ if submit:
         col_ou1.metric(label="🔴 Over 2.5 (Plus de 2 buts)", value=f"{over_25*100:.1f} %")
         col_ou2.metric(label="🟢 Under 2.5 (Moins de 3 buts)", value=f"{under_25*100:.1f} %")
         
-        # Calcul des scores exacts les plus probables
-        st.markdown("### 🎯 Scores exacts probables")
-        scores = [(0,0), (1,0), (0,1), (1,1), (2,0), (0,2), (2,1), (1,2), (2,2)]
-        scores_probables = []
+        # --- NOUVEAU : MATRICE COMPLÈTE DES SCORES EXACTS ---
+        st.markdown("### 🎯 Matrice des Scores Exacts (Probabilités en %)")
         
-        for sA, sB in scores:
-            p = me.calculer_score_exact(lam_A, lam_B, sA, sB)
-            scores_probables.append((f"{sA} - {sB}", p))
+        # Création de la grille (de 0 à 4 buts pour chaque équipe)
+        matrice_scores = []
+        for buts_A in range(5):
+            ligne = []
+            for buts_B in range(5):
+                proba = me.calculer_score_exact(lam_A, lam_B, buts_A, buts_B)
+                ligne.append(proba * 100) # Convertir en pourcentage
+            matrice_scores.append(ligne)
             
-        # Trier du plus probable au moins probable
-        scores_probables.sort(key=lambda x: x[1], reverse=True)
+        # Création du tableau avec Pandas pour un affichage propre
+        df_scores = pd.DataFrame(
+            matrice_scores,
+            index=[f"{i} but(s) {equipe_A}" for i in range(5)],
+            columns=[f"{j} but(s) {equipe_B}" for j in range(5)]
+        )
         
-        # Afficher les 4 meilleurs
-        cols_scores = st.columns(4)
-        for i in range(4):
-            score_str, prob = scores_probables[i]
-            cols_scores[i].metric(label=f"Score {score_str}", value=f"{prob*100:.1f} %")
-            
+        # Affichage du tableau avec un formatage (1 chiffre après la virgule et le signe %)
+        st.dataframe(
+            df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None),
+            use_container_width=True
+        )
+        # ----------------------------------------------------
+
     else:
         st.warning("⚠️ Veuillez entrer le nom des deux équipes.")
