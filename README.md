@@ -4,8 +4,9 @@
 
 Développé avec **Python**, **Streamlit** et déployé sur **Render**, ce bot utilise un modèle statistique avancé pour estimer les buts attendus, les scores exacts et détecter les "Value Bets".
 
-## 🚀 Fonctionnalités Principales
+## 🚀 Fonctionnalités Principales (V3.0)
 
+- **Mode Automatique (API)** : Récupération automatique des statistiques des 15 derniers matchs via l'API Football-Data.org.
 - **Modèle de Poisson & xG** : Calcul des buts attendus (λ) basés sur les Expected Goals (xG) et la moyenne du championnat.
 - **Shrinkage (Régularisation)** : Ajustement automatique des statistiques des équipes en fonction du nombre de matchs joués (fiabilité).
 - **Mode Expert** : Intégration des statistiques avancées (Tirs, Tirs cadrés, Grosses occasions) pour affiner les indices offensifs et défensifs.
@@ -23,6 +24,7 @@ Développé avec **Python**, **Streamlit** et déployé sur **Render**, ce bot u
 
 Le projet est modulaire pour garantir la propreté et l'évolutivité du code :
 - `app.py` : Interface utilisateur (Streamlit) et orchestration.
+- `api_connector.py` : Connexion à l'API Football-Data.org.
 - `math_engine.py` : Formules de base (Poisson, λ, Shrinkage, Intervalles).
 - `dixon_coles.py` : Correction des scores exacts.
 - `asian_handicap.py` : Moteur du marché du Handicap.
@@ -31,5 +33,5 @@ Le projet est modulaire pour garantir la propreté et l'évolutivité du code :
 
 ## ⚠️ Avertissement (Model Card)
 
-**Statut :** Modèle expérimental (V2.2).
+**Statut :** Modèle expérimental (V3.0).
 Ce bot est un outil d'aide à la décision statistique. Il ne garantit aucun résultat. Le pari sportif comporte des risques. Ne misez jamais ce que vous ne pouvez pas vous permettre de perdre. Jouez de manière responsable.
