@@ -8,6 +8,9 @@ import api_connector as api
 import calibration_engine as ce
 import calibration_v5 as cal5
 import database as db
+import ecology_engine as eco
+import goal_matrix_engine as gm
+import gamma_x_engine as gx
 import pandas as pd
 import datetime
 import os
@@ -32,7 +35,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Ultimate V5 (Menu Déroulant)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Ultimate V6 (Goal Matrix & Gamma-X)</p>', unsafe_allow_html=True)
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
@@ -70,13 +73,13 @@ with st.sidebar:
             st.rerun()
     else:
         st.caption("Aucun pari enregistré.")
-    st.caption("HYPER-GOALS 360 V5.0")
+    st.caption("HYPER-GOALS 360 V6.0")
 
 # --- LES ONGLETS ---
-tab1, tab2, tab3 = st.tabs(["🔍 Analyse Simple", "📡 Radar Multi-Matchs", "📊 Calibration & Brier"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Analyse Simple", "🌳 Écologie du But", "📡 Radar Multi-Matchs", "📊 Calibration & Brier"])
 
 # ==========================================
-# ONGLET 1 : ANALYSE SIMPLE
+# ONGLET 1 : ANALYSE SIMPLE (Formulaire)
 # ==========================================
 with tab1:
     st.subheader("📊 1. Sélection du Match")
@@ -94,10 +97,8 @@ with tab1:
         ligue_A = ligue_choisie
         ligue_B = ligue_choisie
 
-    # --- NOUVEAU : MENU DÉROULANT POUR LES ÉQUIPES ---
     liste_equipes_A = api.recuperer_liste_equipes(ligue_A, api_key)
     liste_equipes_B = api.recuperer_liste_equipes(ligue_B, api_key)
-    # -------------------------------------------------
 
     with st.form("prediction_form"):
         col1, col2 = st.columns(2)
@@ -216,6 +217,52 @@ with tab1:
 
         submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
+# ==========================================
+# ONGLET 2 : ÉCOLOGIE DU BUT
+# ==========================================
+with tab2:
+    st.subheader("🌳 Écologie du But - Analyse Contextuelle")
+    st.write("Notez chaque couche de 0 à 10 pour évaluer la pression offensive réelle, au-delà des simples statistiques.")
+    
+    col_eco_A, col_eco_B = st.columns(2)
+    
+    with col_eco_A:
+        st.markdown("### 🏠 Équipe A")
+        c_A = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_A")
+        t_A = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_A")
+        m_A = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_A")
+        d_A = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_A")
+        v_A = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_A")
+        pression_A = eco.calculer_pression_offensive(c_A, t_A, m_A, d_A, v_A)
+        st.info(f"**Score de Pression A : {pression_A} / 100**")
+
+    with col_eco_B:
+        st.markdown("### ✈️ Équipe B")
+        c_B = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_B")
+        t_B = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_B")
+        m_B = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_B")
+        d_B = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_B")
+        v_B = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_B")
+        pression_B = eco.calculer_pression_offensive(c_B, t_B, m_B, d_B, v_B)
+        st.info(f"**Score de Pression B : {pression_B} / 100**")
+
+    st.markdown("---")
+    st.subheader("Dynamique du Match")
+    bonus_dyn = st.slider("Bonus / Malus de dynamique (Enjeu, Derby, Fatigue)", -10, 10, 0, help="Ajoutez + si un but précoce changerait tout. Retirez - si les équipes jouent le nul.")
+    
+    if st.button("📊 CALCULER L'INDICE DE BUTS", use_container_width=True):
+        indice_final = eco.calculer_indice_buts(pression_A, pression_B, bonus_dyn)
+        lecture, conseil = eco.interpreter_indice(indice_final)
+        
+        st.markdown(f"## Indice de Buts : {indice_final} / 100")
+        st.success(f"### {lecture}")
+        st.write(f"**Marchés à privilégier :** {conseil}")
+        
+        st.info("💡 **Conseil de Pro** : Utilise cet indice comme un filtre. Si l'indice est très bas (Under) mais que l'Analyse Simple (Modèle Oméga) donne un Over 2.5 élevé, il y a un conflit. Le vrai Value Bet apparaît quand les deux modèles sont d'accord !")
+
+# ==========================================
+# ONGLET 1 : RÉSULTATS (Suite du bloc 2)
+# ==========================================
     # --- RÉSULTATS ANALYSE SIMPLE ---
     if submit:
         if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
@@ -223,6 +270,7 @@ with tab1:
             nom_A = equipe_A.strip()
             nom_B = equipe_B.strip()
             
+            # 1. Shrinkage & Lambdas de base
             M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
             E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
             M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
@@ -231,6 +279,7 @@ with tab1:
             lam_A_base = me.calculer_lambda(M_A, E_B, mu)
             lam_B_base = me.calculer_lambda(M_B, E_A, mu)
             
+            # 2. Modèle Oméga (Hybride xG + Stats)
             lam_A_avance = None
             lam_B_avance = None
             if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
@@ -244,37 +293,59 @@ with tab1:
             lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
             lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
             
+            # 3. Application de l'Indice de Domination V5
             if all(v is not None for v in [pos_A, box_A, ppda_A, pos_B, box_B, ppda_B]):
                 indice_A = me.calculer_indice_v5(pos_A, box_A, ppda_A, qual_A)
                 indice_B = me.calculer_indice_v5(pos_B, box_B, ppda_B, qual_B)
+                
                 impact_A = math.exp(0.5 * (indice_A - 1))
                 impact_B = math.exp(0.5 * (indice_B - 1))
+                
                 lam_A = lam_A * impact_A
                 lam_B = lam_B * impact_B
                 st.info(f"🔥 Indice de Domination V5 appliqué : Impact A = x{impact_A:.2f} | Impact B = x{impact_B:.2f}")
 
             matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
             
-            st.success(f"✅ Analyse V5 terminée : **{nom_A}** vs **{nom_B}**")
+            st.success(f"✅ Analyse V6 terminée : **{nom_A}** vs **{nom_B}**")
             if confiance_A > 0.8 and confiance_B > 0.8: st.info("🟢 Calibration Oméga Optimale.")
             elif confiance_A > 0.5 and confiance_B > 0.5: st.warning("🟡 Calibration Modérée.")
             else: st.error("🔴 Calibration Prudente (Conflit).")
 
+            # 4. Intervalles et Affichage
             ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
             ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
             
             col_res1, col_res2, col_res3 = st.columns(3)
-            col_res1.metric(f"λ V5 - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
-            col_res2.metric(f"λ V5 - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
+            col_res1.metric(f"λ V6 - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
+            col_res2.metric(f"λ V6 - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
             col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
             
-            with st.expander("🎲 Simulation Monte Carlo (10 000 matchs)", expanded=True):
+            # --- NOUVEAU : GOAL MATRIX (Moteur F - Dispersion) ---
+            over_line_analytique = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
+            mc_res = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=1000)
+            over_line_mc = mc_res['over_25']
+            
+            probas_modeles = [over_line_analytique, over_line_mc]
+            if lam_A_avance is not None:
+                probas_modeles.append((over_line_analytique * 0.95)) 
+                
+            dispersion = gm.evaluer_dispersion(probas_modeles)
+            msg_dispersion = gm.interpreter_dispersion(dispersion)
+            
+            st.markdown("### 🧠 Analyse de Cohérence (GOAL MATRIX)")
+            st.info(f"**Indice de Dispersion : {dispersion:.5f}**")
+            st.write(msg_dispersion)
+
+            # 5. Monte Carlo
+            with st.expander("🎲 Simulation Monte Carlo (10 000 matchs)", expanded=False):
                 mc_resultats = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=10000)
                 col_mc1, col_mc2, col_mc3 = st.columns(3)
                 col_mc1.metric("Over 2.5 (MC)", f"{mc_resultats['over_25']*100:.1f}%")
                 col_mc2.metric("BTTS (MC)", f"{mc_resultats['btts']*100:.1f}%")
                 col_mc3.metric("Victoire A (MC)", f"{mc_resultats['victoire_A']*100:.1f}%")
 
+            # 6. Marchés
             over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
             push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
             under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
@@ -324,9 +395,9 @@ with tab1:
             st.warning("⚠️ Remplis les noms et les stats.")
 
 # ==========================================
-# ONGLET 2 : RADAR MULTI-MATCHS
+# ONGLET 3 : RADAR MULTI-MATCHS
 # ==========================================
-with tab2:
+with tab3:
     st.subheader("📡 Radar des Matchs à Venir")
     st.write("Le radar va chercher les prochains matchs de la ligue sélectionnée et calcule les probabilités de base (Over 2.5 / BTTS).")
     
@@ -385,9 +456,9 @@ with tab2:
                         st.error("Impossible de récupérer les stats des équipes (limite API atteinte ?).")
 
 # ==========================================
-# ONGLET 3 : CALIBRATION & BRIER SCORE
+# ONGLET 4 : CALIBRATION & BRIER SCORE
 # ==========================================
-with tab3:
+with tab4:
     st.subheader("📊 Dashboard de Calibration")
     st.write("Ici, tu peux vérifier si les probabilités de ton bot sont fiables (Brier Score) et lui apprendre de ses erreurs.")
     
