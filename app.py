@@ -4,6 +4,7 @@ import math_engine as me
 import dixon_coles as dc
 import asian_handicap as ah
 import staking as sk
+import api_connector as api
 import pandas as pd
 import datetime
 
@@ -23,67 +24,91 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Modèle ULTIMATE (xG + Stats Avancées)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Mode Automatique (V3)</p>', unsafe_allow_html=True)
 
 if "historique" not in st.session_state:
     st.session_state.historique = []
 
+# --- BARRE LATÉRALE (avec la case pour la clé API) ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
-    st.header("Panneau de contrôle")
-    st.success("🟢 Moteurs chargés :\n- Poisson / xG\n- Indices Avancés\n- Dixon-Coles\n- Handicap\n- Kelly")
-    st.caption("HYPER-GOALS 360 V2.2")
+    st.header("Configuration API")
     
+    # 👉 C'EST ICI QUE TU COLLERAS TA CLÉ
+    api_key = st.text_input("Clé API Football-Data.org", type="password", help="Colle ta clé ici pour activer le mode automatique.")
+    
+    st.markdown("---")
     if len(st.session_state.historique) > 0:
-        st.markdown("---")
         df_export = pd.DataFrame(st.session_state.historique)
         csv = df_export.to_csv(index=False).encode('utf-8')
         st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
+    st.caption("HYPER-GOALS 360 V3.0")
 
+# --- FORMULAIRE ---
 with st.form("prediction_form"):
-    st.subheader("📊 1. Statistiques de Base")
+    st.subheader("📊 1. Sélection du Match")
     ligue_choisie = st.selectbox("🏆 Compétition", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x])
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### 🏠 Équipe A (Domicile)")
-        equipe_A = st.text_input("Nom de l'équipe A", placeholder="Ex: Arsenal")
-        n_A = st.number_input("Matchs pris en compte (A)", min_value=1, value=15, step=1, help="Idéalement 10 dom + 5 récents")
-        M_A_brut = st.number_input("xG (ou Buts) marqués par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.5")
-        E_A_brut = st.number_input("xGA (ou Buts) encaissés par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.0")
+        equipe_A = st.text_input("Nom de l'équipe A (Domicile)", placeholder="Ex: Arsenal")
     with col2:
-        st.markdown("### ✈️ Équipe B (Extérieur)")
-        equipe_B = st.text_input("Nom de l'équipe B", placeholder="Ex: Chelsea")
-        n_B = st.number_input("Matchs pris en compte (B)", min_value=1, value=15, step=1, help="Idéalement 10 ext + 5 récents")
-        M_B_brut = st.number_input("xG (ou Buts) marqués par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.2")
-        E_B_brut = st.number_input("xGA (ou Buts) encaissés par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
-
-    # --- NOUVEAU : MODE EXPERT (Stats avancées) ---
-    with st.expander("⚙️ Mode Expert : Statistiques Avancées (Optionnel)"):
-        st.write("Ajoute ces données pour affiner l'indice de force offensive et défensive (O et V).")
+        equipe_B = st.text_input("Nom de l'équipe B (Extérieur)", placeholder="Ex: Chelsea")
         
-        col_exp_A, col_exp_B = st.columns(2)
-        with col_exp_A:
-            st.markdown(f"**{equipe_A if equipe_A else 'Équipe A'}**")
-            tirs_A = st.number_input("Tirs par match (A)", min_value=0.0, value=None, step=0.1)
-            cadres_A = st.number_input("Tirs cadrés par match (A)", min_value=0.0, value=None, step=0.1)
-            occasions_A = st.number_input("Grosses occasions (A)", min_value=0.0, value=None, step=0.1)
-            
-        with col_exp_B:
-            st.markdown(f"**{equipe_B if equipe_B else 'Équipe B'}**")
-            tirs_B = st.number_input("Tirs par match (B)", min_value=0.0, value=None, step=0.1)
-            cadres_B = st.number_input("Tirs cadrés par match (B)", min_value=0.0, value=None, step=0.1)
-            occasions_B = st.number_input("Grosses occasions (B)", min_value=0.0, value=None, step=0.1)
-    # -----------------------------------------------
-    
     st.markdown("---")
-    st.subheader("💰 2. Cotes & Paramètres")
+    st.subheader("⚙️ 2. Récupération des Données")
+    
+    # Le bouton magique
+    bouton_recup = st.form_submit_button("🔄 Récupérer les stats via API")
+    
+    if bouton_recup:
+        if not api_key:
+            st.error("⚠️ Colle d'abord ta clé API dans le menu de gauche.")
+        elif not equipe_A or not equipe_B:
+            st.error("⚠️ Écris le nom des deux équipes.")
+        else:
+            with st.spinner("Recherche des données sur internet..."):
+                stats_A = api.recuperer_stats_equipe(equipe_A, ligue_choisie, api_key)
+                stats_B = api.recuperer_stats_equipe(equipe_B, ligue_choisie, api_key)
+                
+                if "erreur" in stats_A or "erreur" in stats_B:
+                    st.error(stats_A.get("erreur", stats_B.get("erreur", "Erreur inconnue")))
+                else:
+                    # On sauvegarde les données récupérées
+                    st.session_state.stats_auto_A = stats_A
+                    st.session_state.stats_auto_B = stats_B
+                    st.success("✅ Données récupérées ! Vérifie les chiffres ci-dessous.")
+    
+    # Valeurs par défaut (remplies par l'API si le bouton a été cliqué)
+    defaut_A_marques = st.session_state.stats_auto_A["moy_marques"] if "stats_auto_A" in st.session_state else None
+    defaut_A_encaisses = st.session_state.stats_auto_A["moy_encaisses"] if "stats_auto_A" in st.session_state else None
+    defaut_A_matchs = st.session_state.stats_auto_A["matchs"] if "stats_auto_A" in st.session_state else 15
+    
+    defaut_B_marques = st.session_state.stats_auto_B["moy_marques"] if "stats_auto_B" in st.session_state else None
+    defaut_B_encaisses = st.session_state.stats_auto_B["moy_encaisses"] if "stats_auto_B" in st.session_state else None
+    defaut_B_matchs = st.session_state.stats_auto_B["matchs"] if "stats_auto_B" in st.session_state else 15
+
+    st.markdown("**Statistiques (Modifiables manuellement si besoin) :**")
+    colA, colB = st.columns(2)
+    with colA:
+        st.markdown(f"**{equipe_A if equipe_A else 'Équipe A'}**")
+        n_A = st.number_input("Matchs (A)", min_value=1, value=defaut_A_matchs, step=1)
+        M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, value=defaut_A_marques, step=0.1)
+        E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, value=defaut_A_encaisses, step=0.1)
+    with colB:
+        st.markdown(f"**{equipe_B if equipe_B else 'Équipe B'}**")
+        n_B = st.number_input("Matchs (B)", min_value=1, value=defaut_B_matchs, step=1)
+        M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1)
+        E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1)
+
+    st.markdown("---")
+    st.subheader("💰 3. Cotes & Paramètres")
     
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
-        mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=None, step=0.1, placeholder="Ex: 1.3")
+        mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=2.8, step=0.1)
         ligne_ou = st.number_input("Ligne Over/Under", min_value=0.5, max_value=10.0, value=2.5, step=0.25)
-        cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.85")
+        cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05)
     with col_c2:
         lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
         ligne_choisie = st.selectbox("Ligne Handicap A", options=lignes_ah, index=8)
@@ -101,8 +126,10 @@ with st.form("prediction_form"):
     with col_1x2_3:
         cote_2 = st.number_input(f"Victoire {equipe_B if equipe_B else 'B'}", min_value=1.01, value=None, step=0.05)
 
+    # Le bouton d'analyse final
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
+# --- RÉSULTATS ---
 if submit:
     if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
@@ -112,36 +139,26 @@ if submit:
         M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
         E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
         
-        # 2. Calcul des indices de force (O et V) si Mode Expert rempli
-        multiplicateur_A = 1.0
-        multiplicateur_B = 1.0
-        
-        if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
-            # Indice Offensif A vs Indice Défensif B
-            indice_off_A = me.calculer_indice_force(M_A, tirs_A, cadres_A, occasions_A, mu)
-            indice_def_B = me.calculer_indice_force(E_B, tirs_B, cadres_B, occasions_B, mu) # E_B représente les tirs concédés
-            multiplicateur_A = (indice_off_A + indice_def_B) / 2.0
-            
-            # Indice Offensif B vs Indice Défensif A
-            indice_off_B = me.calculer_indice_force(M_B, tirs_B, cadres_B, occasions_B, mu)
-            indice_def_A = me.calculer_indice_force(E_A, tirs_A, cadres_A, occasions_A, mu)
-            multiplicateur_B = (indice_off_B + indice_def_A) / 2.0
-            st.info("⚙️ Mode Expert activé : Les indices de Tirs/Cadrés/Occasions ont été intégrés au calcul.")
-        
-        # 3. Calcul des Lambdas
-        lam_A = me.calculer_lambda(M_A, E_B, mu) * multiplicateur_A
-        lam_B = me.calculer_lambda(M_B, E_A, mu) * multiplicateur_B
+        # 2. Lambdas & Dixon-Coles
+        lam_A = me.calculer_lambda(M_A, E_B, mu)
+        lam_B = me.calculer_lambda(M_B, E_A, mu)
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
         st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}**")
         
-        poids_A = n_A / (n_A + 5) * 100
-        poids_B = n_B / (n_B + 5) * 100
-        st.caption(f"📊 **Shrinkage** : Confiance de {poids_A:.0f}% dans les stats de {equipe_A} et {poids_B:.0f}% dans celles de {equipe_B}.")
+        # 3. Intervalles de confiance
+        ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
+        ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
         
-        over_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
+        col_res1, col_res2, col_res3 = st.columns(3)
+        col_res1.metric(f"Buts (λ) - {equipe_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
+        col_res2.metric(f"Buts (λ) - {equipe_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
+        col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
+        
+        # 4. Marchés
+        over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
-        under_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
+        under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
         p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
         p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
         p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
@@ -150,18 +167,13 @@ if submit:
         res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
         p_win_ah = res_ah["win"] if res_ah["type"] == "normal" else res_ah["full_win"] + 0.5 * res_ah["half_win"]
 
-        col_res1, col_res2, col_res3 = st.columns(3)
-        col_res1.metric(label=f"xG Ajusté (λ) - {equipe_A}", value=f"{lam_A:.2f}")
-        col_res2.metric(label=f"xG Ajusté (λ) - {equipe_B}", value=f"{lam_B:.2f}")
-        col_res3.metric(label="Total Buts Attendus", value=f"{lam_A + lam_B:.2f}")
-        
         st.markdown("### 📋 Récapitulatif des Marchés")
         data = []
         
-        data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{sk.calculer_cote_equitable(over_line_dc):.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{sk.calculer_ev(over_line_dc, cote_ou)*100:+.1f}%" if cote_ou else "-", f"{sk.calculer_kelly(over_line_dc, cote_ou)*100:.1f}%" if cote_ou else "-"])
+        data.append([f"Over {ligne_ou}", f"{over_line*100:.1f}%", f"{sk.calculer_cote_equitable(over_line):.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{sk.calculer_ev(over_line, cote_ou)*100:+.1f}%" if cote_ou else "-", f"{sk.calculer_kelly(over_line, cote_ou)*100:.1f}%" if cote_ou else "-"])
         if push_line > 0:
             data.append([f"Push {ligne_ou} (Remboursé)", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
-        data.append([f"Under {ligne_ou}", f"{under_line_dc*100:.1f}%", f"{sk.calculer_cote_equitable(under_line_dc):.2f}", "-", "-", "-"])
+        data.append([f"Under {ligne_ou}", f"{under_line*100:.1f}%", f"{sk.calculer_cote_equitable(under_line):.2f}", "-", "-", "-"])
         
         data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{sk.calculer_cote_equitable(p_btts):.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{sk.calculer_ev(p_btts, cote_btts)*100:+.1f}%" if cote_btts else "-", f"{sk.calculer_kelly(p_btts, cote_btts)*100:.1f}%" if cote_btts else "-"])
         data.append([f"Victoire {equipe_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
@@ -181,4 +193,4 @@ if submit:
         st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
 
     else:
-        st.warning("⚠️ Veuillez remplir tous les champs de base.")
+        st.warning("⚠️ Veuillez remplir les noms et les statistiques.")
