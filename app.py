@@ -2,7 +2,7 @@ import streamlit as st
 from leagues import CHAMPIONNATS
 import math_engine as me
 import asian_handicap as ah
-import staking as st
+import staking as sk  # <--- C'EST ICI QU'ON A CORRIGÉ (sk au lieu de st)
 import pandas as pd
 
 # 1. Configuration de la page
@@ -90,15 +90,14 @@ if submit:
         
         # --- NOUVEAU : Cote équitable, EV et Kelly ---
         if cote_over is not None:
-            cote_fair = st.calculer_cote_equitable(over_25)
-            ev = st.calculer_ev(over_25, cote_over)
-            mise_kelly = st.calculer_kelly(over_25, cote_over)
+            cote_fair = sk.calculer_cote_equitable(over_25)  # <--- CORRIGÉ ICI (sk)
+            ev = sk.calculer_ev(over_25, cote_over)          # <--- CORRIGÉ ICI (sk)
+            mise_kelly = sk.calculer_kelly(over_25, cote_over) # <--- CORRIGÉ ICI (sk)
             
             st.markdown("### 💰 Analyse de Valeur (Over 2.5)")
             col_v1, col_v2, col_v3 = st.columns(3)
             col_v1.metric("Cote Équitable", f"{cote_fair:.2f}")
             
-            # Affichage de l'EV avec couleur
             if ev > 0:
                 col_v2.metric("Valeur (EV)", f"+{ev*100:.1f} %", delta="Value Bet !", delta_color="normal")
             else:
