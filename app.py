@@ -6,12 +6,14 @@ import asian_handicap as ah
 import staking as sk
 import api_connector as api
 import calibration_engine as ce
+import calibration_v5 as cal5
 import database as db
 import pandas as pd
 import datetime
 import os
+import math
 
-# 1. Configuration & CSS
+# 1. Configuration & CSS Premium
 st.set_page_config(page_title="HYPER-GOALS 360 | Pro", page_icon="⚽", layout="wide")
 st.markdown("""
     <style>
@@ -30,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Ultimate V4 (Corrigé)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Ultimate V5 (Modèle Prédictif)</p>', unsafe_allow_html=True)
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
@@ -68,17 +70,15 @@ with st.sidebar:
             st.rerun()
     else:
         st.caption("Aucun pari enregistré.")
-    st.caption("HYPER-GOALS 360 V4.0")
+    st.caption("HYPER-GOALS 360 V5.0")
 
 # --- LES ONGLETS ---
-tab1, tab2 = st.tabs(["🔍 Analyse Simple (avec Coupes)", "📡 Radar Multi-Matchs"])
-
+tab1, tab2 = st.tabs(["🔍 Analyse Simple", "📡 Radar Multi-Matchs"])
 
 # ==========================================
 # ONGLET 1 : ANALYSE SIMPLE
 # ==========================================
 with tab1:
-    # 👉 LA CORRECTION EST ICI : Le sélecteur de compétition est EN DEHORS du formulaire
     st.subheader("📊 1. Sélection du Match")
     liste_affichage = list(CHAMPIONNATS.keys()) + ["COUPE_NATIONALE"]
     ligue_choisie = st.selectbox("🏆 Compétition", options=liste_affichage, format_func=lambda x: CHAMPIONNATS.get(x, "Coupe Nationale (Hybride)"))
@@ -94,7 +94,6 @@ with tab1:
         ligue_A = ligue_choisie
         ligue_B = ligue_choisie
 
-    # 👉 Le formulaire commence ici
     with st.form("prediction_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -112,8 +111,7 @@ with tab1:
             bouton_mu = st.form_submit_button("🔄 Récupérer Moyenne (μ)")
         
         if bouton_mu:
-            if not api_key:
-                st.error("Clé API requise.")
+            if not api_key: st.error("Clé API requise.")
             else:
                 with st.spinner("Calcul de la moyenne..."):
                     mu_auto = api.recuperer_moyenne_ligue(ligue_A, api_key)
@@ -121,10 +119,8 @@ with tab1:
                     st.success(f"Moyenne (μ) trouvée : {mu_auto}")
 
         if bouton_recup:
-            if not api_key:
-                st.error("Clé API requise.")
-            elif not equipe_A or not equipe_B:
-                st.error("Écris les noms des deux équipes.")
+            if not api_key: st.error("Clé API requise.")
+            elif not equipe_A or not equipe_B: st.error("Écris les noms des deux équipes.")
             else:
                 with st.spinner("Recherche des données..."):
                     stats_A = api.recuperer_stats_equipe(equipe_A, ligue_A, api_key)
@@ -145,7 +141,7 @@ with tab1:
         defaut_B_matchs = st.session_state.stats_auto_B["matchs"] if "stats_auto_B" in st.session_state else 15
         defaut_mu = st.session_state.mu_auto if "mu_auto" in st.session_state else 2.8
 
-        st.markdown("**Statistiques (Modifiables) :**")
+        st.markdown("**Statistiques de Base (Modifiables) :**")
         colA, colB = st.columns(2)
         with colA:
             st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
@@ -168,6 +164,23 @@ with tab1:
                 tirs_B = st.number_input("Tirs/m (B)", min_value=0.0, value=None, step=0.1)
                 cadres_B = st.number_input("Tirs cadrés/m (B)", min_value=0.0, value=None, step=0.1)
                 occasions_B = st.number_input("Grosses occ. (B)", min_value=0.0, value=None, step=0.1)
+
+        # --- NOUVEAU : MODE V5 (Domination) ---
+        with st.expander("🔥 Mode V5 : Domination & Contexte (Optionnel)"):
+            st.write("Si tu renseignes ces données, le bot boostera ou pénalisera les buts attendus (λ).")
+            col_v5_A, col_v5_B = st.columns(2)
+            with col_v5_A:
+                st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
+                pos_A = st.number_input("Possession moyenne (%) (A)", min_value=0.0, value=None, step=1.0, placeholder="Ex: 55")
+                box_A = st.number_input("Entrées dans la surface (A)", min_value=0.0, value=None, step=1.0, placeholder="Ex: 18")
+                ppda_A = st.number_input("PPDA (Pressing) (A)", min_value=1.0, value=None, step=0.1, placeholder="Ex: 8.5")
+                qual_A = st.selectbox("Qualité des adversaires affrontés (A)", options=[1, 2, 3, 4, 5], index=2, help="1=Faible, 3=Moyen, 5=Très fort")
+            with col_v5_B:
+                st.markdown(f"**{equipe_B.strip() if equipe_B else 'Équipe B'}**")
+                pos_B = st.number_input("Possession moyenne (%) (B)", min_value=0.0, value=None, step=1.0, placeholder="Ex: 45")
+                box_B = st.number_input("Entrées dans la surface (B)", min_value=0.0, value=None, step=1.0, placeholder="Ex: 12")
+                ppda_B = st.number_input("PPDA (Pressing) (B)", min_value=1.0, value=None, step=0.1, placeholder="Ex: 11.2")
+                qual_B = st.selectbox("Qualité des adversaires affrontés (B)", options=[1, 2, 3, 4, 5], index=2, help="1=Faible, 3=Moyen, 5=Très fort")
 
         st.markdown("---")
         st.subheader("💰 3. Cotes & Paramètres")
@@ -202,6 +215,8 @@ with tab1:
             
             nom_A = equipe_A.strip()
             nom_B = equipe_B.strip()
+            
+            # 1. Shrinkage & Lambdas de base
             M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
             E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
             M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
@@ -210,6 +225,7 @@ with tab1:
             lam_A_base = me.calculer_lambda(M_A, E_B, mu)
             lam_B_base = me.calculer_lambda(M_B, E_A, mu)
             
+            # 2. Modèle Oméga (Hybride xG + Stats)
             lam_A_avance = None
             lam_B_avance = None
             if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
@@ -223,21 +239,43 @@ with tab1:
             lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
             lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
             
+            # 3. Application de l'Indice de Domination V5
+            if all(v is not None for v in [pos_A, box_A, ppda_A, pos_B, box_B, ppda_B]):
+                indice_A = me.calculer_indice_v5(pos_A, box_A, ppda_A, qual_A)
+                indice_B = me.calculer_indice_v5(pos_B, box_B, ppda_B, qual_B)
+                
+                impact_A = math.exp(0.5 * (indice_A - 1))
+                impact_B = math.exp(0.5 * (indice_B - 1))
+                
+                lam_A = lam_A * impact_A
+                lam_B = lam_B * impact_B
+                st.info(f"🔥 Indice de Domination V5 appliqué : Impact A = x{impact_A:.2f} | Impact B = x{impact_B:.2f}")
+
             matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
             
-            st.success(f"✅ Analyse Hybride terminée : **{nom_A}** vs **{nom_B}**")
-            if confiance_A > 0.8 and confiance_B > 0.8: st.info("🟢 Calibration Optimale.")
+            st.success(f"✅ Analyse V5 terminée : **{nom_A}** vs **{nom_B}**")
+            if confiance_A > 0.8 and confiance_B > 0.8: st.info("🟢 Calibration Oméga Optimale.")
             elif confiance_A > 0.5 and confiance_B > 0.5: st.warning("🟡 Calibration Modérée.")
             else: st.error("🔴 Calibration Prudente (Conflit).")
 
+            # 4. Intervalles et Affichage
             ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
             ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
             
             col_res1, col_res2, col_res3 = st.columns(3)
-            col_res1.metric(f"λ - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
-            col_res2.metric(f"λ - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
+            col_res1.metric(f"λ V5 - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
+            col_res2.metric(f"λ V5 - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
             col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
             
+            # 5. Monte Carlo
+            with st.expander("🎲 Simulation Monte Carlo (10 000 matchs)", expanded=True):
+                mc_resultats = cal5.simuler_monte_carlo(lam_A, lam_B, n_simulations=10000)
+                col_mc1, col_mc2, col_mc3 = st.columns(3)
+                col_mc1.metric("Over 2.5 (MC)", f"{mc_resultats['over_25']*100:.1f}%")
+                col_mc2.metric("BTTS (MC)", f"{mc_resultats['btts']*100:.1f}%")
+                col_mc3.metric("Victoire A (MC)", f"{mc_resultats['victoire_A']*100:.1f}%")
+
+            # 6. Marchés
             over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
             push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
             under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
@@ -252,6 +290,7 @@ with tab1:
             nom_match = f"{nom_A} - {nom_B}"
             nom_ligue = CHAMPIONNATS.get(ligue_choisie, "Coupe Nationale")
             
+            # Enregistrement
             if cote_ou and sk.calculer_ev(over_line, cote_ou) > 0:
                 db.ajouter_analyse(nom_match, nom_ligue, lam_A, lam_B, f"Over {ligne_ou}", over_line*100, cote_ou, sk.calculer_ev(over_line, cote_ou)*100, sk.calculer_kelly(over_line, cote_ou)*100)
             if cote_btts and sk.calculer_ev(p_btts, cote_btts) > 0:
