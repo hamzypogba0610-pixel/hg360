@@ -35,14 +35,12 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Configuration API")
     
-    # --- NOUVEAU : RECHERCHE DE LA CLÉ DANS LE SERVEUR RENDER ---
-    api_key = ""
-    try:
-        # Le bot essaie de lire la clé cachée dans Render
-        api_key = st.secrets["FOOTBALL_DATA_API_KEY"]
+    # --- RECHERCHE DE LA CLÉ DANS LE SERVEUR RENDER (CORRIGÉ) ---
+    api_key = os.environ.get("FOOTBALL_DATA_API_KEY", "")
+    
+    if api_key:
         st.success("✅ Clé API connectée au serveur de manière sécurisée.")
-    except Exception:
-        # Si la clé n'est pas trouvée (ex: test local), on affiche la case manuelle
+    else:
         st.warning("⚠️ Clé API non trouvée dans le serveur. Entre-la manuellement ci-dessous.")
         api_key = st.text_input("Clé API Football-Data.org", type="password")
     # -----------------------------------------------------------
