@@ -34,8 +34,17 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Configuration API")
     
-    # Case pour la clé API
-    api_key = st.text_input("Clé API Football-Data.org", type="password", help="Colle ta clé ici pour activer le mode automatique.")
+    # --- NOUVEAU : RECHERCHE DE LA CLÉ DANS LE SERVEUR RENDER ---
+    api_key = ""
+    try:
+        # Le bot essaie de lire la clé cachée dans Render
+        api_key = st.secrets["FOOTBALL_DATA_API_KEY"]
+        st.success("✅ Clé API connectée au serveur de manière sécurisée.")
+    except Exception:
+        # Si la clé n'est pas trouvée (ex: test local), on affiche la case manuelle
+        st.warning("⚠️ Clé API non trouvée dans le serveur. Entre-la manuellement ci-dessous.")
+        api_key = st.text_input("Clé API Football-Data.org", type="password")
+    # -----------------------------------------------------------
     
     st.markdown("---")
     if len(st.session_state.historique) > 0:
@@ -63,7 +72,7 @@ with st.form("prediction_form"):
     
     if bouton_recup:
         if not api_key:
-            st.error("⚠️ Colle d'abord ta clé API dans le menu de gauche.")
+            st.error("⚠️ Clé API manquante.")
         elif not equipe_A or not equipe_B:
             st.error("⚠️ Écris le nom des deux équipes.")
         else:
@@ -91,13 +100,11 @@ with st.form("prediction_form"):
     st.markdown("**Statistiques (Modifiables manuellement si besoin) :**")
     colA, colB = st.columns(2)
     with colA:
-        # CORRECTION ICI : .strip() enlève les espaces invisibles
         st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
         n_A = st.number_input("Matchs (A)", min_value=1, value=defaut_A_matchs, step=1)
         M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, value=defaut_A_marques, step=0.1)
         E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, value=defaut_A_encaisses, step=0.1)
     with colB:
-        # CORRECTION ICI : .strip() enlève les espaces invisibles
         st.markdown(f"**{equipe_B.strip() if equipe_B else 'Équipe B'}**")
         n_B = st.number_input("Matchs (B)", min_value=1, value=defaut_B_matchs, step=1)
         M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1)
@@ -135,7 +142,6 @@ with st.form("prediction_form"):
 if submit:
     if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
-        # Nettoyage des noms pour l'affichage
         nom_A = equipe_A.strip()
         nom_B = equipe_B.strip()
 
