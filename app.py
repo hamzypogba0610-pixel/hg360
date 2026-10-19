@@ -24,17 +24,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Mode Automatique (V3)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Mode Automatique (V3.0)</p>', unsafe_allow_html=True)
 
 if "historique" not in st.session_state:
     st.session_state.historique = []
 
-# --- BARRE LATÉRALE (avec la case pour la clé API) ---
+# --- BARRE LATÉRALE ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Configuration API")
     
-    # 👉 C'EST ICI QUE TU COLLERAS TA CLÉ
+    # Case pour la clé API
     api_key = st.text_input("Clé API Football-Data.org", type="password", help="Colle ta clé ici pour activer le mode automatique.")
     
     st.markdown("---")
@@ -58,7 +58,7 @@ with st.form("prediction_form"):
     st.markdown("---")
     st.subheader("⚙️ 2. Récupération des Données")
     
-    # Le bouton magique
+    # Bouton de récupération API
     bouton_recup = st.form_submit_button("🔄 Récupérer les stats via API")
     
     if bouton_recup:
@@ -91,12 +91,14 @@ with st.form("prediction_form"):
     st.markdown("**Statistiques (Modifiables manuellement si besoin) :**")
     colA, colB = st.columns(2)
     with colA:
-        st.markdown(f"**{equipe_A if equipe_A else 'Équipe A'}**")
+        # CORRECTION ICI : .strip() enlève les espaces invisibles
+        st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
         n_A = st.number_input("Matchs (A)", min_value=1, value=defaut_A_matchs, step=1)
         M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, value=defaut_A_marques, step=0.1)
         E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, value=defaut_A_encaisses, step=0.1)
     with colB:
-        st.markdown(f"**{equipe_B if equipe_B else 'Équipe B'}**")
+        # CORRECTION ICI : .strip() enlève les espaces invisibles
+        st.markdown(f"**{equipe_B.strip() if equipe_B else 'Équipe B'}**")
         n_B = st.number_input("Matchs (B)", min_value=1, value=defaut_B_matchs, step=1)
         M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1)
         E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1)
@@ -120,11 +122,11 @@ with st.form("prediction_form"):
     st.markdown("**Cotes 1X2**")
     col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
     with col_1x2_1:
-        cote_1 = st.number_input(f"Victoire {equipe_A if equipe_A else 'A'}", min_value=1.01, value=None, step=0.05)
+        cote_1 = st.number_input(f"Victoire {equipe_A.strip() if equipe_A else 'A'}", min_value=1.01, value=None, step=0.05)
     with col_1x2_2:
         cote_X = st.number_input("Match Nul", min_value=1.01, value=None, step=0.05)
     with col_1x2_3:
-        cote_2 = st.number_input(f"Victoire {equipe_B if equipe_B else 'B'}", min_value=1.01, value=None, step=0.05)
+        cote_2 = st.number_input(f"Victoire {equipe_B.strip() if equipe_B else 'B'}", min_value=1.01, value=None, step=0.05)
 
     # Le bouton d'analyse final
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
@@ -133,6 +135,10 @@ with st.form("prediction_form"):
 if submit:
     if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
+        # Nettoyage des noms pour l'affichage
+        nom_A = equipe_A.strip()
+        nom_B = equipe_B.strip()
+
         # 1. Shrinkage
         M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
         E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
@@ -144,15 +150,15 @@ if submit:
         lam_B = me.calculer_lambda(M_B, E_A, mu)
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
-        st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}**")
+        st.success(f"✅ Analyse terminée : **{nom_A}** vs **{nom_B}**")
         
         # 3. Intervalles de confiance
         ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
         ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
         
         col_res1, col_res2, col_res3 = st.columns(3)
-        col_res1.metric(f"Buts (λ) - {equipe_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
-        col_res2.metric(f"Buts (λ) - {equipe_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
+        col_res1.metric(f"Buts (λ) - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
+        col_res2.metric(f"Buts (λ) - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
         col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
         
         # 4. Marchés
@@ -176,9 +182,9 @@ if submit:
         data.append([f"Under {ligne_ou}", f"{under_line*100:.1f}%", f"{sk.calculer_cote_equitable(under_line):.2f}", "-", "-", "-"])
         
         data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{sk.calculer_cote_equitable(p_btts):.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{sk.calculer_ev(p_btts, cote_btts)*100:+.1f}%" if cote_btts else "-", f"{sk.calculer_kelly(p_btts, cote_btts)*100:.1f}%" if cote_btts else "-"])
-        data.append([f"Victoire {equipe_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
+        data.append([f"Victoire {nom_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
         data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{sk.calculer_cote_equitable(p_Nul):.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{sk.calculer_ev(p_Nul, cote_X)*100:+.1f}%" if cote_X else "-", f"{sk.calculer_kelly(p_Nul, cote_X)*100:.1f}%" if cote_X else "-"])
-        data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
+        data.append([f"Victoire {nom_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
         data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{sk.calculer_cote_equitable(p_win_ah):.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{sk.calculer_ev(p_win_ah, cote_ah)*100:+.1f}%" if cote_ah else "-", f"{sk.calculer_kelly(p_win_ah, cote_ah)*100:.1f}%" if cote_ah else "-"])
         
         df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
@@ -189,7 +195,7 @@ if submit:
 
         st.markdown(f"### 🎯 Matrice des Scores (ρ={rho})")
         matrice_scores = [[matrice_dc.get((i, j), 0) * 100 for j in range(5)] for i in range(5)]
-        df_scores = pd.DataFrame(matrice_scores, index=[f"{i} but(s) {equipe_A}" for i in range(5)], columns=[f"{j} but(s) {equipe_B}" for j in range(5)])
+        df_scores = pd.DataFrame(matrice_scores, index=[f"{i} but(s) {nom_A}" for i in range(5)], columns=[f"{j} but(s) {nom_B}" for j in range(5)])
         st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
 
     else:
