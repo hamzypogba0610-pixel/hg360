@@ -73,10 +73,10 @@ with st.sidebar:
     st.caption("HYPER-GOALS 360 V5.0")
 
 # --- LES ONGLETS ---
-tab1, tab2 = st.tabs(["🔍 Analyse Simple", "📡 Radar Multi-Matchs"])
+tab1, tab2, tab3 = st.tabs(["🔍 Analyse Simple", "📡 Radar Multi-Matchs", "📊 Calibration & Brier"])
 
 # ==========================================
-# ONGLET 1 : ANALYSE SIMPLE
+# ONGLET 1 : ANALYSE SIMPLE (Partie Formulaire)
 # ==========================================
 with tab1:
     st.subheader("📊 1. Sélection du Match")
@@ -385,3 +385,76 @@ with tab2:
                         st.info("💡 Pour trouver des Value Bets, compare ces probabilités avec les cotes de ton bookmaker dans l'onglet 'Analyse Simple'.")
                     else:
                         st.error("Impossible de récupérer les stats des équipes (limite API atteinte ?).")
+
+# ==========================================
+# ONGLET 3 : CALIBRATION & BRIER SCORE
+# ==========================================
+with tab3:
+    st.subheader("📊 Dashboard de Calibration")
+    st.write("Ici, tu peux vérifier si les probabilités de ton bot sont fiables (Brier Score) et lui apprendre de ses erreurs.")
+    
+    st.markdown("### 1. Enregistrer les résultats des paris")
+    st.write("Sélectionne un pari dans l'historique pour dire s'il a été gagné ou perdu.")
+    
+    df_hist_cal = db.recuperer_historique()
+    if df_hist_cal.empty:
+        st.info("Aucun pari enregistré pour le moment. Fais des analyses pour remplir l'historique !")
+    else:
+        df_attente = df_hist_cal[df_hist_cal['resultat'].isna()]
+        
+        if not df_attente.empty:
+            for index, row in df_attente.head(5).iterrows():
+                col_info, col_btn_win, col_btn_lose = st.columns([3, 1, 1])
+                with col_info:
+                    st.write(f"**{row['match']}** - {row['marche']} (Proba: {row['probabilite']:.1f}%)")
+                with col_btn_win:
+                    if st.button(f"✅ Gagné", key=f"win_{row['id']}"):
+                        db.maj_resultat(row['id'], 1)
+                        st.rerun()
+                with col_btn_lose:
+                    if st.button(f"❌ Perdu", key=f"lose_{row['id']}"):
+                        db.maj_resultat(row['id'], 0)
+                        st.rerun()
+        else:
+            st.success("Tous les paris ont un résultat enregistré !")
+
+        st.markdown("---")
+        st.markdown("### 2. Évaluation de la Fiabilité (Brier Score)")
+        
+        df_avec_resultat = df_hist_cal[df_hist_cal['resultat'].notna()]
+        
+        if len(df_avec_resultat) > 0:
+            import numpy as np
+            probas = df_avec_resultat['probabilite'].values / 100.0
+            resultats = df_avec_resultat['resultat'].astype(int).values
+            
+            brier = cal5.calculer_brier(probas, resultats)
+            
+            col_bs1, col_bs2 = st.columns(2)
+            col_bs1.metric("Brier Score Actuel", f"{brier:.4f}", help="Plus c'est proche de 0, meilleur est le modèle.")
+            
+            if brier < 0.15:
+                st.success("🟢 Excellent ! Ton modèle est très bien calibré.")
+            elif brier < 0.25:
+                st.warning("🟡 Moyen. Le modèle est acceptable mais peut être amélioré.")
+            else:
+                st.error("🔴 Faible. Le modèle est trop confiant ou pas assez. Il faut le recalibrer.")
+                
+            st.markdown("### 3. Couche de Recalibrage")
+            st.write("Voici ce que donneraient tes probabilités après ajustement mathématique :")
+            
+            probas_platt = [cal5.platt_scaling(p, A=1.0, B=0.0) for p in probas]
+            brier_platt = cal5.calculer_brier(probas_platt, resultats)
+            
+            probas_temp = [cal5.temperature_scaling(p, T=1.5) for p in probas]
+            brier_temp = cal5.calculer_brier(probas_temp, resultats)
+            
+            col_r1, col_r2, col_r3 = st.columns(3)
+            col_r1.metric("Brier Original", f"{brier:.4f}")
+            col_r2.metric("Brier Platt Scaling", f"{brier_platt:.4f}")
+            col_r3.metric("Brier Temp Scaling", f"{brier_temp:.4f}")
+            
+            st.info("💡 Si une méthode de recalibrage donne un Brier Score plus bas, c'est qu'elle corrige mieux les erreurs du bot.")
+            
+        else:
+            st.warning("⚠️ Il faut enregistrer au moins un résultat (Gagné/Perdu) pour calculer le Brier Score.")
