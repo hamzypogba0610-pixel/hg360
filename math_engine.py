@@ -14,45 +14,41 @@ def proba_poisson(k, lam):
     return (math.exp(-lam) * (lam ** k)) / math.factorial(k)
 
 def proba_over_under(lam_A, lam_B, ligne=2.5):
+    """Calcule Over, Under et Push (si la ligne est entière)"""
     lam_totale = lam_A + lam_B
-    if ligne == 2.5:
-        proba_under = sum(proba_poisson(k, lam_totale) for k in range(0, 3))
+    proba_under = 0.0
+    proba_push = 0.0
+    
+    if ligne % 1 == 0: # Ligne entière (ex: 3.0)
+        limite = int(ligne)
+        proba_under = sum(proba_poisson(k, lam_totale) for k in range(0, limite))
+        proba_push = proba_poisson(limite, lam_totale)
+        proba_over = 1 - proba_under - proba_push
+    else: # Demi-ligne (ex: 2.5)
+        limite = int(ligne)
+        proba_under = sum(proba_poisson(k, lam_totale) for k in range(0, limite + 1))
         proba_over = 1 - proba_under
-        return proba_over, proba_under
-    limite = int(ligne)
-    proba_under = sum(proba_poisson(k, lam_totale) for k in range(0, limite + 1))
-    proba_over = 1 - proba_under
-    return proba_over, proba_under
+        
+    return proba_over, proba_under, proba_push
 
 def calculer_score_exact(lam_A, lam_B, score_A, score_B):
     proba_A = proba_poisson(score_A, lam_A)
     proba_B = proba_poisson(score_B, lam_B)
     return proba_A * proba_B
 
-# --- NOUVELLES FONCTIONS POUR LES AUTRES MARCHÉS ---
-
 def proba_1x2(lam_A, lam_B):
-    """Calcule les probabilités de Victoire A, Nul, Victoire B"""
     p_A, p_Nul, p_B = 0.0, 0.0, 0.0
     for i in range(11):
         for j in range(11):
             p = calculer_score_exact(lam_A, lam_B, i, j)
-            if i > j:
-                p_A += p
-            elif i == j:
-                p_Nul += p
-            else:
-                p_B += p
+            if i > j: p_A += p
+            elif i == j: p_Nul += p
+            else: p_B += p
     return p_A, p_Nul, p_B
 
 def proba_btts(lam_A, lam_B):
-    """Calcule la probabilité que les deux équipes marquent (BTTS Oui/Non)"""
-    # BTTS Non = A marque 0 OU B marque 0
     p_A_zero = sum(calculer_score_exact(lam_A, lam_B, 0, j) for j in range(11))
     p_B_zero = sum(calculer_score_exact(lam_A, lam_B, i, 0) for i in range(11))
     p_0_0 = calculer_score_exact(lam_A, lam_B, 0, 0)
-    
-    # On utilise la formule des probabilités : P(A U B) = P(A) + P(B) - P(A inter B)
     proba_non = p_A_zero + p_B_zero - p_0_0
-    proba_oui = 1.0 - proba_non
-    return proba_oui, proba_non
+    return 1.0 - proba_non, proba_non
