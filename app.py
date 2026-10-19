@@ -5,11 +5,12 @@ import dixon_coles as dc
 import asian_handicap as ah
 import staking as sk
 import api_connector as api
+import calibration_engine as ce
 import pandas as pd
 import datetime
 import os
 
-# 1. Configuration & CSS
+# 1. Configuration & CSS Premium
 st.set_page_config(page_title="HYPER-GOALS 360 | Pro", page_icon="⚽", layout="wide")
 st.markdown("""
     <style>
@@ -25,7 +26,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Mode Automatique (V3.0)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Ultimate V4 (Calibration Hybride)</p>', unsafe_allow_html=True)
 
 if "historique" not in st.session_state:
     st.session_state.historique = []
@@ -35,7 +36,7 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Configuration API")
     
-    # --- RECHERCHE DE LA CLÉ DANS LE SERVEUR RENDER (CORRIGÉ) ---
+    # RECHERCHE DE LA CLÉ DANS LE SERVEUR RENDER
     api_key = os.environ.get("FOOTBALL_DATA_API_KEY", "")
     
     if api_key:
@@ -43,14 +44,13 @@ with st.sidebar:
     else:
         st.warning("⚠️ Clé API non trouvée dans le serveur. Entre-la manuellement ci-dessous.")
         api_key = st.text_input("Clé API Football-Data.org", type="password")
-    # -----------------------------------------------------------
     
     st.markdown("---")
     if len(st.session_state.historique) > 0:
         df_export = pd.DataFrame(st.session_state.historique)
         csv = df_export.to_csv(index=False).encode('utf-8')
         st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
-    st.caption("HYPER-GOALS 360 V3.0")
+    st.caption("HYPER-GOALS 360 V4.0")
 
 # --- FORMULAIRE ---
 with st.form("prediction_form"):
@@ -82,7 +82,6 @@ with st.form("prediction_form"):
                 if "erreur" in stats_A or "erreur" in stats_B:
                     st.error(stats_A.get("erreur", stats_B.get("erreur", "Erreur inconnue")))
                 else:
-                    # On sauvegarde les données récupérées
                     st.session_state.stats_auto_A = stats_A
                     st.session_state.stats_auto_B = stats_B
                     st.success("✅ Données récupérées ! Vérifie les chiffres ci-dessous.")
@@ -109,6 +108,20 @@ with st.form("prediction_form"):
         M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1)
         E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1)
 
+    # Mode Expert
+    with st.expander("⚙️ Mode Expert : Statistiques Avancées (Optionnel)"):
+        col_exp_A, col_exp_B = st.columns(2)
+        with col_exp_A:
+            st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
+            tirs_A = st.number_input("Tirs par match (A)", min_value=0.0, value=None, step=0.1)
+            cadres_A = st.number_input("Tirs cadrés par match (A)", min_value=0.0, value=None, step=0.1)
+            occasions_A = st.number_input("Grosses occasions (A)", min_value=0.0, value=None, step=0.1)
+        with col_exp_B:
+            st.markdown(f"**{equipe_B.strip() if equipe_B else 'Équipe B'}**")
+            tirs_B = st.number_input("Tirs par match (B)", min_value=0.0, value=None, step=0.1)
+            cadres_B = st.number_input("Tirs cadrés par match (B)", min_value=0.0, value=None, step=0.1)
+            occasions_B = st.number_input("Grosses occasions (B)", min_value=0.0, value=None, step=0.1)
+
     st.markdown("---")
     st.subheader("💰 3. Cotes & Paramètres")
     
@@ -124,7 +137,7 @@ with st.form("prediction_form"):
     with col_c3:
         cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05)
         rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01)
-    
+
     st.markdown("**Cotes 1X2**")
     col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
     with col_1x2_1:
@@ -144,29 +157,56 @@ if submit:
         nom_A = equipe_A.strip()
         nom_B = equipe_B.strip()
 
-        # 1. Shrinkage
+        # 1. Shrinkage initial (Modèle de base)
         M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
         E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
         M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
         E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
         
-        # 2. Lambdas & Dixon-Coles
-        lam_A = me.calculer_lambda(M_A, E_B, mu)
-        lam_B = me.calculer_lambda(M_B, E_A, mu)
+        # 2. Lambdas de base (Poisson pur)
+        lam_A_base = me.calculer_lambda(M_A, E_B, mu)
+        lam_B_base = me.calculer_lambda(M_B, E_A, mu)
+        
+        # 3. Lambdas Avancés (Si Mode Expert rempli)
+        lam_A_avance = None
+        lam_B_avance = None
+        
+        if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
+            indice_off_A = me.calculer_indice_force(M_A, tirs_A, cadres_A, occasions_A, mu)
+            indice_def_B = me.calculer_indice_force(E_B, tirs_B, cadres_B, occasions_B, mu)
+            lam_A_avance = (lam_A_base * (indice_off_A + indice_def_B) / 2.0)
+            
+            indice_off_B = me.calculer_indice_force(M_B, tirs_B, cadres_B, occasions_B, mu)
+            indice_def_A = me.calculer_indice_force(E_A, tirs_A, cadres_A, occasions_A, mu)
+            lam_B_avance = (lam_B_base * (indice_off_B + indice_def_A) / 2.0)
+
+        # 4. CALIBRATION HYBRIDE (Le Juge Oméga)
+        lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
+        lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
+        
+        # 5. Dixon-Coles (Matrice corrigée)
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
-        st.success(f"✅ Analyse terminée : **{nom_A}** vs **{nom_B}**")
+        st.success(f"✅ Analyse Hybride terminée : **{nom_A}** vs **{nom_B}**")
         
-        # 3. Intervalles de confiance
+        # Affichage du statut du Juge (Calibration)
+        if confiance_A > 0.8 and confiance_B > 0.8:
+            st.info("🟢 Calibration Optimale : Les modèles xG et Stats Avancées sont en parfait accord.")
+        elif confiance_A > 0.5 and confiance_B > 0.5:
+            st.warning("🟡 Calibration Modérée : Légère divergence entre les modèles, résultat sécurisé.")
+        else:
+            st.error("🔴 Calibration Prudente : Les modèles sont en conflit. Le bot a ramené les estimations vers la moyenne pour éviter une erreur.")
+
+        # Intervalles de confiance
         ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
         ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
         
         col_res1, col_res2, col_res3 = st.columns(3)
-        col_res1.metric(f"Buts (λ) - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
-        col_res2.metric(f"Buts (λ) - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
+        col_res1.metric(f"Buts Calibrés (λ) - {nom_A}", f"{lam_A:.2f}", f"IC90: [{ci_A_bas:.2f} - {ci_A_haut:.2f}]", delta_color="off")
+        col_res2.metric(f"Buts Calibrés (λ) - {nom_B}", f"{lam_B:.2f}", f"IC90: [{ci_B_bas:.2f} - {ci_B_haut:.2f}]", delta_color="off")
         col_res3.metric("Total Buts", f"{lam_A + lam_B:.2f}")
         
-        # 4. Marchés
+        # Calcul des marchés à partir de la matrice Dixon-Coles
         over_line = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
         under_line = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
