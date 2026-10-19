@@ -7,6 +7,7 @@ import staking as sk
 import api_connector as api
 import pandas as pd
 import datetime
+import os
 
 # 1. Configuration & CSS
 st.set_page_config(page_title="HYPER-GOALS 360 | Pro", page_icon="⚽", layout="wide")
