@@ -1,6 +1,6 @@
 import requests
 
-# On fait le lien entre nos menus et les codes du site de l'API
+# Correspondance entre nos menus et les codes du site de l'API
 CODES_LIGUES = {
     "EPL": "PL",
     "CHAMPIONSHIP": "ELC",
@@ -17,36 +17,44 @@ CODES_LIGUES = {
 }
 
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
-    # Si c'est une coupe qu'on n'a pas dans la liste, on s'arrête
     if code_ligue not in CODES_LIGUES:
-        return {"erreur": "Cette compétition n'est pas disponible avec l'API gratuite."}
+        return {"erreur": "Cette compétition n'est pas disponible avec l'API."}
         
     code_api = CODES_LIGUES[code_ligue]
     headers = {"X-Auth-Token": api_key}
     
     try:
-        # 1. On cherche l'ID de l'équipe sur le site
+        # 1. On cherche la liste des équipes de la compétition
         url_equipes = f"https://api.football-data.org/v4/competitions/{code_api}/teams"
         reponse = requests.get(url_equipes, headers=headers)
         
         if reponse.status_code != 200:
-            return {"erreur": f"Clé invalide ou erreur de connexion (Code {reponse.status_code})."}
+            return {"erreur": f"Erreur API (Code {reponse.status_code}). Vérifie ta clé."}
             
         equipes = reponse.json().get("teams", [])
         equipe_id = None
         nom_officiel = nom_equipe
         
-        # On cherche l'équipe (ex: si tu tapes "Arsenal", il trouve "Arsenal FC")
+        # On nettoie le nom tapé (minuscules, sans espaces superflus)
+        recherche = nom_equipe.lower().strip()
+        
+        # 2. On cherche l'équipe (nom complet, nom court ou abréviation)
         for eq in equipes:
-            if nom_equipe.lower() in eq["name"].lower() or nom_equipe.lower() in eq.get("shortName", "").lower() or nom_equipe.lower() in eq.get("tla", "").lower():
+            nom_api = eq.get("name", "").lower()
+            nom_court = eq.get("shortName", "").lower()
+            abreviation = eq.get("tla", "").lower()
+            
+            if recherche in nom_api or recherche in nom_court or recherche == abreviation:
                 equipe_id = eq["id"]
                 nom_officiel = eq["name"]
                 break
                 
+        # 3. Si l'équipe n'est pas trouvée, on affiche la liste des équipes disponibles
         if not equipe_id:
-            return {"erreur": f"Équipe '{nom_equipe}' introuvable dans cette compétition."}
+            liste_dispo = [eq.get("name") for eq in equipes]
+            return {"erreur": f"Équipe '{nom_equipe}' introuvable. Voici les équipes disponibles dans cette compétition : {', '.join(liste_dispo)}"}
             
-        # 2. On récupère les 15 derniers matchs terminés
+        # 4. On récupère les 15 derniers matchs terminés
         url_matchs = f"https://api.football-data.org/v4/teams/{equipe_id}/matches?status=FINISHED&limit=15"
         reponse_matchs = requests.get(url_matchs, headers=headers)
         matchs = reponse_matchs.json().get("matches", [])
@@ -58,7 +66,7 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
         buts_encaisses = 0
         nb_matchs = len(matchs)
         
-        # 3. On calcule les moyennes
+        # 5. On calcule les moyennes de buts
         for m in matchs:
             if m["homeTeam"]["id"] == equipe_id:
                 buts_marques += m["score"]["fullTime"]["home"]
@@ -67,7 +75,6 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
                 buts_marques += m["score"]["fullTime"]["away"]
                 buts_encaisses += m["score"]["fullTime"]["home"]
                 
-        # On renvoie les résultats
         return {
             "nom": nom_officiel,
             "matchs": nb_matchs,
