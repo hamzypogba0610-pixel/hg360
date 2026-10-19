@@ -3,11 +3,17 @@ import requests
 # On fait le lien entre nos menus et les codes du site de l'API
 CODES_LIGUES = {
     "EPL": "PL",
-    "LALIGA": "PD",
-    "SERIEA": "SA",
+    "CHAMPIONSHIP": "ELC",
     "BUNDES": "BL1",
+    "SERIEA": "SA",
+    "LALIGA": "PD",
     "LIGUE1": "FL1",
-    "UCL": "CL"
+    "DED": "DED",
+    "PPL": "PPL",
+    "BSA": "BSA",
+    "UCL": "CL",
+    "EURO": "EC",
+    "WORLD_CUP": "WC"
 }
 
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
