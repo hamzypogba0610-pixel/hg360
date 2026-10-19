@@ -30,12 +30,11 @@ st.markdown('<p class="sub-title">Tableau de Bord du Parieur Pro</p>', unsafe_al
 if "historique" not in st.session_state:
     st.session_state.historique = []
 
-# --- BARRE LATÉRALE ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
     st.success("🟢 Moteurs chargés :\n- Poisson\n- Dixon-Coles\n- Handicap Asiatique\n- Kelly Staking")
-    st.info("💡 Entre les données, choisis ta ligne de marché et compare avec les cotes du bookmaker.")
+    st.info("💡 Entre les données et compare avec les cotes du bookmaker.")
     st.caption("HYPER-GOALS 360 V2.2")
     
     if len(st.session_state.historique) > 0:
@@ -48,7 +47,6 @@ with st.sidebar:
             st.session_state.historique = []
             st.rerun()
 
-# --- FORMULAIRE ---
 with st.form("prediction_form"):
     st.subheader("📊 1. Statistiques de Base")
     ligue_choisie = st.selectbox("🏆 Compétition", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x])
@@ -71,9 +69,19 @@ with st.form("prediction_form"):
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=None, step=0.1, placeholder="Ex: 1.3")
-        # NOUVEAU : Choix de la ligne Over/Under
-        ligne_ou = st.selectbox("Ligne Over/Under", options=[1.5, 2.5, 3.5], index=1)
+        
+        # --- NOUVEAU : Choix de la ligne Over/Under ---
+        lignes_ou_std = [0.5, 1.5, 2.5, 3.5, 4.5, "Autre (Saisir manuellement)"]
+        choix_ligne_ou = st.selectbox("Ligne Over/Under", options=lignes_ou_std, index=2)
+        
+        if choix_ligne_ou == "Autre (Saisir manuellement)":
+            ligne_ou = st.number_input("Saisir la ligne (ex: 3.0, 2.25)", min_value=0.1, value=3.0, step=0.25)
+        else:
+            ligne_ou = choix_ligne_ou
+            
         cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.85")
+        # ----------------------------------------------
+        
     with col_c2:
         lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
         ligne_choisie = st.selectbox("Ligne Handicap A", options=lignes_ah, index=8)
@@ -93,7 +101,6 @@ with st.form("prediction_form"):
 
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
-# --- RÉSULTATS ---
 if submit:
     if equipe_A and equipe_B and M_A is not None and E_A is not None and M_B is not None and E_B is not None and mu is not None:
         
@@ -101,14 +108,12 @@ if submit:
         lam_B = me.calculer_lambda(M_B, E_A, mu)
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
-        st.success(f"✅ Analyse terminée (Dixon-Coles Activé) : **{equipe_A}** vs **{equipe_B}**")
+        st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}** (Dixon-Coles ρ={rho})")
         
-        # Calculs Over/Under dynamiques
-        over_line, under_line = me.proba_over_under(lam_A, lam_B, ligne_ou)
-        # On recalcule via la matrice DC pour plus de précision
+        # Calculs Over/Under stricts via la matrice Dixon-Coles
         over_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
-        under_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
+        under_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j < ligne_ou)
 
         p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
         p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
@@ -116,21 +121,7 @@ if submit:
         p_B = sum(p for (i, j), p in matrice_dc.items() if i < j)
         
         res_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
-        if res_ah["type"] == "normal":
-            p_win_ah = res_ah["win"]
-        else:
-            p_win_ah = res_ah["full_win"] + 0.5 * res_ah["half_win"]
-
-        # Sauvegarde Value Bet
-        if over_line_dc > 0 and cote_ou:
-            ev = sk.calculer_ev(over_line_dc, cote_ou)
-            if ev > 0:
-                st.session_state.historique.append({
-                    "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "Match": f"{equipe_A} - {equipe_B}",
-                    "Ligue": CHAMPIONNATS[ligue_choisie], "Lambda A": round(lam_A, 2), "Lambda B": round(lam_B, 2),
-                    "Marché": f"Over {ligne_ou}", "Proba (%)": round(over_line_dc*100, 1), "Cote Book": cote_ou,
-                    "EV (%)": round(ev*100, 1), "Mise Kelly (%)": round(sk.calculer_kelly(over_line_dc, cote_ou)*100, 1)
-                })
+        p_win_ah = res_ah["win"] if res_ah["type"] == "normal" else res_ah["full_win"] + 0.5 * res_ah["half_win"]
 
         col_res1, col_res2 = st.columns(2)
         col_res1.metric(label=f"Buts attendus (λ) - {equipe_A}", value=f"{lam_A:.2f}")
@@ -139,11 +130,18 @@ if submit:
         st.markdown("### 📋 Récapitulatif des Marchés")
         data = []
         
-        # Over/Under
-        c_fair = sk.calculer_cote_equitable(over_line_dc)
-        ev = sk.calculer_ev(over_line_dc, cote_ou) if cote_ou else 0
-        kelly = sk.calculer_kelly(over_line_dc, cote_ou) if cote_ou else 0
-        data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{c_fair:.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{ev*100:+.1f}%" if cote_ou else "-", f"{kelly*100:.1f}%" if cote_ou else "-"])
+        # Over
+        c_fair_over = sk.calculer_cote_equitable(over_line_dc)
+        ev_over = sk.calculer_ev(over_line_dc, cote_ou) if cote_ou else 0
+        kelly_over = sk.calculer_kelly(over_line_dc, cote_ou) if cote_ou else 0
+        data.append([f"Over {ligne_ou}", f"{over_line_dc*100:.1f}%", f"{c_fair_over:.2f}", f"{cote_ou:.2f}" if cote_ou else "-", f"{ev_over*100:+.1f}%" if cote_ou else "-", f"{kelly_over*100:.1f}%" if cote_ou else "-"])
+
+        # Push (Remboursement) - Affiché uniquement si la ligne est entière
+        if push_line > 0:
+            data.append([f"Push {ligne_ou} (Remboursé)", f"{push_line*100:.1f}%", "-", "-", "-", "-"])
+            
+        # Under (Optionnel, mais bien de l'afficher)
+        data.append([f"Under {ligne_ou}", f"{under_line_dc*100:.1f}%", f"{sk.calculer_cote_equitable(under_line_dc):.2f}", "-", "-", "-"])
         
         # BTTS
         c_fair_btts = sk.calculer_cote_equitable(p_btts)
@@ -152,26 +150,12 @@ if submit:
         data.append(["BTTS (Oui)", f"{p_btts*100:.1f}%", f"{c_fair_btts:.2f}", f"{cote_btts:.2f}" if cote_btts else "-", f"{ev_btts*100:+.1f}%" if cote_btts else "-", f"{kelly_btts*100:.1f}%" if cote_btts else "-"])
         
         # 1X2
-        c_fair_1 = sk.calculer_cote_equitable(p_A)
-        ev_1 = sk.calculer_ev(p_A, cote_1) if cote_1 else 0
-        kelly_1 = sk.calculer_kelly(p_A, cote_1) if cote_1 else 0
-        data.append([f"Victoire {equipe_A}", f"{p_A*100:.1f}%", f"{c_fair_1:.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{ev_1*100:+.1f}%" if cote_1 else "-", f"{kelly_1*100:.1f}%" if cote_1 else "-"])
-        
-        c_fair_X = sk.calculer_cote_equitable(p_Nul)
-        ev_X = sk.calculer_ev(p_Nul, cote_X) if cote_X else 0
-        kelly_X = sk.calculer_kelly(p_Nul, cote_X) if cote_X else 0
-        data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{c_fair_X:.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{ev_X*100:+.1f}%" if cote_X else "-", f"{kelly_X*100:.1f}%" if cote_X else "-"])
-        
-        c_fair_2 = sk.calculer_cote_equitable(p_B)
-        ev_2 = sk.calculer_ev(p_B, cote_2) if cote_2 else 0
-        kelly_2 = sk.calculer_kelly(p_B, cote_2) if cote_2 else 0
-        data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{c_fair_2:.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{ev_2*100:+.1f}%" if cote_2 else "-", f"{kelly_2*100:.1f}%" if cote_2 else "-"])
+        data.append([f"Victoire {equipe_A}", f"{p_A*100:.1f}%", f"{sk.calculer_cote_equitable(p_A):.2f}", f"{cote_1:.2f}" if cote_1 else "-", f"{sk.calculer_ev(p_A, cote_1)*100:+.1f}%" if cote_1 else "-", f"{sk.calculer_kelly(p_A, cote_1)*100:.1f}%" if cote_1 else "-"])
+        data.append(["Match Nul", f"{p_Nul*100:.1f}%", f"{sk.calculer_cote_equitable(p_Nul):.2f}", f"{cote_X:.2f}" if cote_X else "-", f"{sk.calculer_ev(p_Nul, cote_X)*100:+.1f}%" if cote_X else "-", f"{sk.calculer_kelly(p_Nul, cote_X)*100:.1f}%" if cote_X else "-"])
+        data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{sk.calculer_cote_equitable(p_B):.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{sk.calculer_ev(p_B, cote_2)*100:+.1f}%" if cote_2 else "-", f"{sk.calculer_kelly(p_B, cote_2)*100:.1f}%" if cote_2 else "-"])
         
         # Handicap
-        c_fair_ah = sk.calculer_cote_equitable(p_win_ah)
-        ev_ah = sk.calculer_ev(p_win_ah, cote_ah) if cote_ah else 0
-        kelly_ah = sk.calculer_kelly(p_win_ah, cote_ah) if cote_ah else 0
-        data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{c_fair_ah:.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{ev_ah*100:+.1f}%" if cote_ah else "-", f"{kelly_ah*100:.1f}%" if cote_ah else "-"])
+        data.append([f"Handicap A ({ligne_choisie})", f"{p_win_ah*100:.1f}%", f"{sk.calculer_cote_equitable(p_win_ah):.2f}", f"{cote_ah:.2f}" if cote_ah else "-", f"{sk.calculer_ev(p_win_ah, cote_ah)*100:+.1f}%" if cote_ah else "-", f"{sk.calculer_kelly(p_win_ah, cote_ah)*100:.1f}%" if cote_ah else "-"])
         
         df_markets = pd.DataFrame(data, columns=["Marché", "Probabilité", "Cote Équitable", "Cote Book", "EV", "Mise Kelly"])
         st.dataframe(
@@ -187,13 +171,11 @@ if submit:
     else:
         st.warning("⚠️ Veuillez remplir les noms et les statistiques des équipes.")
 
-# --- SECTION MODEL CARD / DISCLAIMER (Sécurité Pro) ---
 st.markdown("---")
 with st.expander("⚠️ Avertissement & Model Card (À lire)"):
     st.markdown("""
     **Statut du modèle :** Expérimental (HYPER-GOALS 360 V2.2).
-    **Ce que le bot fait :** Il estime les buts attendus et calcule des probabilités conditionnelles basées sur la loi de Poisson, corrigée par Dixon-Coles.
-    **Ce que le bot ne fait pas :** Il ne garantit aucun résultat. Il ne remplace pas l'analyse humaine (compositions, blessures, météo).
-    **Gestion de bankroll :** La mise Kelly suggérée est plafonnée à 5% maximum. Ne misez jamais ce que vous ne pouvez pas vous permettre de perdre.
+    **Ce que le bot fait :** Il estime les buts attendus et calcule des probabilités conditionnelles.
+    **Ce que le bot ne fait pas :** Il ne garantit aucun résultat.
     **Jeu responsable :** Le pari sportif comporte des risques. Jouez de manière responsable.
     """)
