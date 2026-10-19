@@ -46,9 +46,9 @@ with st.sidebar:
     
     with st.expander("Gérer mon argent"):
         with st.form("form_bankroll"):
-            type_trans = st.selectbox("Type", ["Dépôt", "Retrait", "Gain (Pari gagné)"])
-            montant = st.number_input("Montant (€)", min_value=1.0, step=10.0)
-            desc = st.text_input("Description")
+            type_trans = st.selectbox("Type", ["Dépôt", "Retrait", "Gain (Pari gagné)"], key="k_type_trans")
+            montant = st.number_input("Montant (€)", min_value=1.0, step=10.0, key="k_montant")
+            desc = st.text_input("Description", key="k_desc")
             if st.form_submit_button("Valider"):
                 t = "depot" if type_trans == "Dépôt" else ("retrait" if type_trans == "Retrait" else "gain")
                 db.ajouter_transaction(t, montant, desc)
@@ -60,7 +60,7 @@ with st.sidebar:
     if api_key:
         st.success("✅ Clé API connectée.")
     else:
-        api_key = st.text_input("Clé API Football-Data.org", type="password")
+        api_key = st.text_input("Clé API Football-Data.org", type="password", key="k_api_key")
     
     st.markdown("---")
     st.subheader("📁 Historique des Value Bets")
@@ -68,7 +68,7 @@ with st.sidebar:
     if not df_hist.empty:
         csv = df_hist.to_csv(index=False).encode('utf-8')
         st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
-        if st.button("🗑️ Effacer l'historique"):
+        if st.button("🗑️ Effacer l'historique", key="k_clear_hist"):
             db.vider_historique()
             st.rerun()
     else:
@@ -84,15 +84,15 @@ tab1, tab2, tab3, tab4 = st.tabs(["🔍 Analyse Simple", "🌳 Écologie du But"
 with tab1:
     st.subheader("📊 1. Sélection du Match")
     liste_affichage = list(CHAMPIONNATS.keys()) + ["COUPE_NATIONALE"]
-    ligue_choisie = st.selectbox("🏆 Compétition", options=liste_affichage, format_func=lambda x: CHAMPIONNATS.get(x, "Coupe Nationale (Hybride)"))
+    ligue_choisie = st.selectbox("🏆 Compétition", options=liste_affichage, format_func=lambda x: CHAMPIONNATS.get(x, "Coupe Nationale (Hybride)"), key="k_ligue")
     
     if ligue_choisie == "COUPE_NATIONALE":
         st.info("🛡️ Mode Coupe : Sélectionne le championnat d'origine des deux équipes.")
         col_cup1, col_cup2 = st.columns(2)
         with col_cup1:
-            ligue_A = st.selectbox("Ligue d'origine de l'équipe A", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_cup_A")
+            ligue_A = st.selectbox("Ligue d'origine de l'équipe A", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_cup_A")
         with col_cup2:
-            ligue_B = st.selectbox("Ligue d'origine de l'équipe B", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_cup_B")
+            ligue_B = st.selectbox("Ligue d'origine de l'équipe B", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_cup_B")
     else:
         ligue_A = ligue_choisie
         ligue_B = ligue_choisie
@@ -104,14 +104,14 @@ with tab1:
         col1, col2 = st.columns(2)
         with col1:
             if liste_equipes_A:
-                equipe_A = st.selectbox("Équipe A (Domicile)", options=liste_equipes_A)
+                equipe_A = st.selectbox("Équipe A (Domicile)", options=liste_equipes_A, key="k_eq_A")
             else:
-                equipe_A = st.text_input("Nom de l'équipe A (Domicile)", placeholder="Ex: PSG")
+                equipe_A = st.text_input("Nom de l'équipe A (Domicile)", placeholder="Ex: PSG", key="k_eq_A_txt")
         with col2:
             if liste_equipes_B:
-                equipe_B = st.selectbox("Équipe B (Extérieur)", options=liste_equipes_B)
+                equipe_B = st.selectbox("Équipe B (Extérieur)", options=liste_equipes_B, key="k_eq_B")
             else:
-                equipe_B = st.text_input("Nom de l'équipe B (Extérieur)", placeholder="Ex: Marseille")
+                equipe_B = st.text_input("Nom de l'équipe B (Extérieur)", placeholder="Ex: Marseille", key="k_eq_B_txt")
             
         st.markdown("---")
         st.subheader("⚙️ 2. Récupération des Données")
@@ -157,63 +157,63 @@ with tab1:
         colA, colB = st.columns(2)
         with colA:
             st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
-            n_A = st.number_input("Matchs (A)", min_value=1, value=defaut_A_matchs, step=1)
-            M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, value=defaut_A_marques, step=0.1)
-            E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, value=defaut_A_encaisses, step=0.1)
+            n_A = st.number_input("Matchs (A)", min_value=1, value=defaut_A_matchs, step=1, key="k_n_A")
+            M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, value=defaut_A_marques, step=0.1, key="k_M_A")
+            E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, value=defaut_A_encaisses, step=0.1, key="k_E_A")
         with colB:
             st.markdown(f"**{equipe_B.strip() if equipe_B else 'Équipe B'}**")
-            n_B = st.number_input("Matchs (B)", min_value=1, value=defaut_B_matchs, step=1)
-            M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1)
-            E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1)
+            n_B = st.number_input("Matchs (B)", min_value=1, value=defaut_B_matchs, step=1, key="k_n_B")
+            M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1, key="k_M_B")
+            E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1, key="k_E_B")
 
         with st.expander("⚙️ Mode Expert : Statistiques Avancées"):
             col_exp_A, col_exp_B = st.columns(2)
             with col_exp_A:
-                tirs_A = st.number_input("Tirs/m (A)", min_value=0.0, value=None, step=0.1)
-                cadres_A = st.number_input("Tirs cadrés/m (A)", min_value=0.0, value=None, step=0.1)
-                occasions_A = st.number_input("Grosses occ. (A)", min_value=0.0, value=None, step=0.1)
+                tirs_A = st.number_input("Tirs/m (A)", min_value=0.0, value=None, step=0.1, key="k_tirs_A")
+                cadres_A = st.number_input("Tirs cadrés/m (A)", min_value=0.0, value=None, step=0.1, key="k_cadres_A")
+                occasions_A = st.number_input("Grosses occ. (A)", min_value=0.0, value=None, step=0.1, key="k_occ_A")
             with col_exp_B:
-                tirs_B = st.number_input("Tirs/m (B)", min_value=0.0, value=None, step=0.1)
-                cadres_B = st.number_input("Tirs cadrés/m (B)", min_value=0.0, value=None, step=0.1)
-                occasions_B = st.number_input("Grosses occ. (B)", min_value=0.0, value=None, step=0.1)
+                tirs_B = st.number_input("Tirs/m (B)", min_value=0.0, value=None, step=0.1, key="k_tirs_B")
+                cadres_B = st.number_input("Tirs cadrés/m (B)", min_value=0.0, value=None, step=0.1, key="k_cadres_B")
+                occasions_B = st.number_input("Grosses occ. (B)", min_value=0.0, value=None, step=0.1, key="k_occ_B")
 
         with st.expander("🔥 Mode V5 : Domination & Contexte (Optionnel)"):
             col_v5_A, col_v5_B = st.columns(2)
             with col_v5_A:
-                pos_A = st.number_input("Possession (%) (A)", min_value=0.0, value=None, step=1.0)
-                box_A = st.number_input("Entrées dans la surface (A)", min_value=0.0, value=None, step=1.0)
-                ppda_A = st.number_input("PPDA (Pressing) (A)", min_value=1.0, value=None, step=0.1)
-                qual_A = st.selectbox("Qualité des adversaires (A)", options=[1, 2, 3, 4, 5], index=2)
+                pos_A = st.number_input("Possession (%) (A)", min_value=0.0, value=None, step=1.0, key="k_pos_A")
+                box_A = st.number_input("Entrées dans la surface (A)", min_value=0.0, value=None, step=1.0, key="k_box_A")
+                ppda_A = st.number_input("PPDA (Pressing) (A)", min_value=1.0, value=None, step=0.1, key="k_ppda_A")
+                qual_A = st.selectbox("Qualité des adversaires (A)", options=[1, 2, 3, 4, 5], index=2, key="k_qual_A")
             with col_v5_B:
-                pos_B = st.number_input("Possession (%) (B)", min_value=0.0, value=None, step=1.0)
-                box_B = st.number_input("Entrées dans la surface (B)", min_value=0.0, value=None, step=1.0)
-                ppda_B = st.number_input("PPDA (Pressing) (B)", min_value=1.0, value=None, step=0.1)
-                qual_B = st.selectbox("Qualité des adversaires (B)", options=[1, 2, 3, 4, 5], index=2)
+                pos_B = st.number_input("Possession (%) (B)", min_value=0.0, value=None, step=1.0, key="k_pos_B")
+                box_B = st.number_input("Entrées dans la surface (B)", min_value=0.0, value=None, step=1.0, key="k_box_B")
+                ppda_B = st.number_input("PPDA (Pressing) (B)", min_value=1.0, value=None, step=0.1, key="k_ppda_B")
+                qual_B = st.selectbox("Qualité des adversaires (B)", options=[1, 2, 3, 4, 5], index=2, key="k_qual_B")
 
         st.markdown("---")
         st.subheader("💰 3. Cotes & Paramètres")
         
         col_c1, col_c2, col_c3 = st.columns(3)
         with col_c1:
-            mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=defaut_mu, step=0.1)
-            ligne_ou = st.number_input("Ligne Over/Under", min_value=0.5, max_value=10.0, value=2.5, step=0.25)
-            cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05)
+            mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=defaut_mu, step=0.1, key="k_mu_final")
+            ligne_ou = st.number_input("Ligne Over/Under", min_value=0.5, max_value=10.0, value=2.5, step=0.25, key="k_ligne_ou_final")
+            cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, key="k_cote_ou_final")
         with col_c2:
             lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
-            ligne_choisie = st.selectbox("Ligne Handicap A", options=lignes_ah, index=8)
-            cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05)
+            ligne_choisie = st.selectbox("Ligne Handicap A", options=lignes_ah, index=8, key="k_ligne_ah_final")
+            cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05, key="k_cote_ah_final")
         with col_c3:
-            cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05)
-            rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01)
+            cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05, key="k_cote_btts_final")
+            rho = st.slider("Paramètre Rho (ρ)", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01, key="k_rho_final")
 
         st.markdown("**Cotes 1X2**")
         col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
         with col_1x2_1:
-            cote_1 = st.number_input(f"Victoire {equipe_A.strip() if equipe_A else 'A'}", min_value=1.01, value=None, step=0.05)
+            cote_1 = st.number_input(f"Victoire {equipe_A.strip() if equipe_A else 'A'}", min_value=1.01, value=None, step=0.05, key="k_cote_1_final")
         with col_1x2_2:
-            cote_X = st.number_input("Match Nul", min_value=1.01, value=None, step=0.05)
+            cote_X = st.number_input("Match Nul", min_value=1.01, value=None, step=0.05, key="k_cote_X_final")
         with col_1x2_3:
-            cote_2 = st.number_input(f"Victoire {equipe_B.strip() if equipe_B else 'B'}", min_value=1.01, value=None, step=0.05)
+            cote_2 = st.number_input(f"Victoire {equipe_B.strip() if equipe_B else 'B'}", min_value=1.01, value=None, step=0.05, key="k_cote_2_final")
 
         submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
@@ -227,7 +227,6 @@ with tab1:
             nom_A = equipe_A.strip()
             nom_B = equipe_B.strip()
             
-            # 1. Shrinkage & Lambdas de base
             M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
             E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
             M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
@@ -236,7 +235,6 @@ with tab1:
             lam_A_base = me.calculer_lambda(M_A, E_B, mu)
             lam_B_base = me.calculer_lambda(M_B, E_A, mu)
             
-            # 2. Modèle Oméga (Hybride xG + Stats)
             lam_A_avance = None
             lam_B_avance = None
             if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
@@ -250,7 +248,6 @@ with tab1:
             lam_A, confiance_A = ce.calibrer_lambda_hybride(lam_A_base, lam_A_avance, mu, n_A)
             lam_B, confiance_B = ce.calibrer_lambda_hybride(lam_B_base, lam_B_avance, mu, n_B)
             
-            # 3. Application de l'Indice de Domination V5
             if all(v is not None for v in [pos_A, box_A, ppda_A, pos_B, box_B, ppda_B]):
                 indice_A = me.calculer_indice_v5(pos_A, box_A, ppda_A, qual_A)
                 indice_B = me.calculer_indice_v5(pos_B, box_B, ppda_B, qual_B)
@@ -269,7 +266,6 @@ with tab1:
             elif confiance_A > 0.5 and confiance_B > 0.5: st.warning("🟡 Calibration Modérée.")
             else: st.error("🔴 Calibration Prudente (Conflit).")
 
-            # 4. Intervalles et Affichage
             ci_A_bas, ci_A_haut = me.calculer_intervalle_confiance(lam_A, n_A)
             ci_B_bas, ci_B_haut = me.calculer_intervalle_confiance(lam_B, n_B)
             
@@ -356,9 +352,9 @@ with tab1:
             
             col_cf1, col_cf2 = st.columns(2)
             with col_cf1:
-                impact_A_pct = st.slider("Ajustement Performance Équipe A (%)", -50, 50, 0, step=5)
+                impact_A_pct = st.slider("Ajustement Performance Équipe A (%)", -50, 50, 0, step=5, key="k_cf_A")
             with col_cf2:
-                impact_B_pct = st.slider("Ajustement Performance Équipe B (%)", -50, 50, 0, step=5)
+                impact_B_pct = st.slider("Ajustement Performance Équipe B (%)", -50, 50, 0, step=5, key="k_cf_B")
             
             mult_A = 1 + (impact_A_pct / 100)
             mult_B = 1 + (impact_B_pct / 100)
@@ -410,9 +406,9 @@ with tab2:
 
     st.markdown("---")
     st.subheader("Dynamique du Match")
-    bonus_dyn = st.slider("Bonus / Malus de dynamique (Enjeu, Derby, Fatigue)", -10, 10, 0, help="Ajoutez + si un but précoce changerait tout. Retirez - si les équipes jouent le nul.")
+    bonus_dyn = st.slider("Bonus / Malus de dynamique (Enjeu, Derby, Fatigue)", -10, 10, 0, help="Ajoutez + si un but précoce changerait tout. Retirez - si les équipes jouent le nul.", key="k_bonus_dyn")
     
-    if st.button("📊 CALCULER L'INDICE DE BUTS", use_container_width=True):
+    if st.button("📊 CALCULER L'INDICE DE BUTS", use_container_width=True, key="k_btn_eco"):
         indice_final = eco.calculer_indice_buts(pression_A, pression_B, bonus_dyn)
         lecture, conseil = eco.interpreter_indice(indice_final)
         
@@ -429,9 +425,9 @@ with tab3:
     st.subheader("📡 Radar des Matchs à Venir")
     st.write("Le radar va chercher les prochains matchs de la ligue sélectionnée et calcule les probabilités de base (Over 2.5 / BTTS).")
     
-    ligue_radar = st.selectbox("Choisir la ligue à scanner", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="ligue_radar")
+    ligue_radar = st.selectbox("Choisir la ligue à scanner", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_radar")
     
-    if st.button("🚀 Lancer le Scanner (Max 5 matchs)"):
+    if st.button("🚀 Lancer le Scanner (Max 5 matchs)", key="k_btn_radar"):
         if not api_key:
             st.error("Clé API requise dans le menu de gauche.")
         else:
