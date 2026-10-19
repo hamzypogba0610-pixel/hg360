@@ -4,6 +4,7 @@ import math_engine as me
 import dixon_coles as dc
 import staking as sk
 import pandas as pd
+import datetime
 
 # 1. Configuration
 st.set_page_config(page_title="HYPER-GOALS 360 | Pro", page_icon="⚽", layout="wide")
@@ -25,11 +26,32 @@ st.markdown("""
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Tableau de Bord du Parieur Pro</p>', unsafe_allow_html=True)
 
+# --- INITIALISATION DE LA MÉMOIRE (SESSION STATE) ---
+if "historique" not in st.session_state:
+    st.session_state.historique = []
+
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
     st.info("💡 Ajuste le paramètre Rho (ρ) pour corriger les scores serrés (0-0, 1-1).")
     st.caption("HYPER-GOALS 360 V2.2")
+    
+    # Bouton d'export dans la barre latérale
+    if len(st.session_state.historique) > 0:
+        st.markdown("---")
+        st.subheader("📁 Exporter mes données")
+        df_export = pd.DataFrame(st.session_state.historique)
+        csv = df_export.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Télécharger l'historique (CSV)",
+            data=csv,
+            file_name=f"hg360_historique_{datetime.date.today()}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+        if st.button("🗑️ Effacer l'historique", use_container_width=True):
+            st.session_state.historique = []
+            st.rerun()
 
 # 5. Formulaire de saisie
 with st.form("prediction_form"):
@@ -61,7 +83,7 @@ with st.form("prediction_form"):
         cote_ah = st.number_input(f"Cote Handicap ({ligne_choisie})", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.90")
     with col_c3:
         cote_btts = st.number_input("Cote BTTS (Oui)", min_value=1.01, value=None, step=0.05, placeholder="Ex: 1.75")
-        rho = st.slider("Paramètre Rho (ρ) Dixon-Coles", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01, help="Valeur négative typique pour le football. Corrige les scores 0-0, 1-0, 0-1, 1-1.")
+        rho = st.slider("Paramètre Rho (ρ) Dixon-Coles", min_value=-0.15, max_value=0.15, value=-0.05, step=0.01)
     
     st.markdown("**Cotes 1X2 (Victoire / Nul / Défaite)**")
     col_1x2_1, col_1x2_2, col_1x2_3 = st.columns(3)
@@ -80,27 +102,41 @@ if submit:
         
         lam_A = me.calculer_lambda(M_A, E_B, mu)
         lam_B = me.calculer_lambda(M_B, E_A, mu)
-        
-        # --- NOUVEAU : On applique Dixon-Coles ! ---
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
         st.success(f"✅ Analyse terminée (Dixon-Coles Activé) : **{equipe_A}** vs **{equipe_B}**")
         
+        # --- SAUVEGARDE DANS L'HISTORIQUE ---
+        match_id = f"{equipe_A} vs {equipe_B} ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})"
+        
+        over_25 = sum(p for (i, j), p in matrice_dc.items() if i + j > 2)
+        if over_25 > 0 and cote_over:
+            ev = sk.calculer_ev(over_25, cote_over)
+            if ev > 0: # On sauvegarde seulement les value bets !
+                st.session_state.historique.append({
+                    "Date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "Match": f"{equipe_A} - {equipe_B}",
+                    "Ligue": CHAMPIONNATS[ligue_choisie],
+                    "Lambda A": round(lam_A, 2),
+                    "Lambda B": round(lam_B, 2),
+                    "Marché": "Over 2.5",
+                    "Proba (%)": round(over_25*100, 1),
+                    "Cote Book": cote_over,
+                    "EV (%)": round(ev*100, 1),
+                    "Mise Kelly (%)": round(sk.calculer_kelly(over_25, cote_over)*100, 1)
+                })
+        # -----------------------------------
+
         col_res1, col_res2 = st.columns(2)
         col_res1.metric(label=f"Buts attendus (λ) - {equipe_A}", value=f"{lam_A:.2f}")
         col_res2.metric(label=f"Buts attendus (λ) - {equipe_B}", value=f"{lam_B:.2f}")
         
-        # Calcul des probabilités à partir de la matrice CORRIGÉE
-        over_25 = sum(p for (i, j), p in matrice_dc.items() if i + j > 2)
         p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
-        
         p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
         p_Nul = sum(p for (i, j), p in matrice_dc.items() if i == j)
         p_B = sum(p for (i, j), p in matrice_dc.items() if i < j)
         
-        # --- TABLEAU RÉCAPITULATIF DES VALUE BETS ---
         st.markdown("### 📋 Récapitulatif des Marchés et Value Bets")
-        
         data = []
         
         # Over 2.5
@@ -131,7 +167,7 @@ if submit:
         kelly_2 = sk.calculer_kelly(p_B, cote_2) if cote_2 else 0
         data.append([f"Victoire {equipe_B}", f"{p_B*100:.1f}%", f"{c_fair_2:.2f}", f"{cote_2:.2f}" if cote_2 else "-", f"{ev_2*100:+.1f}%" if cote_2 else "-", f"{kelly_2*100:.1f}%" if cote_2 else "-"])
         
-        # Handicap Asiatique (calculé directement sur la matrice DC)
+        # Handicap Asiatique
         est_quart = (ligne_choisie % 0.5 != 0)
         if not est_quart:
             p_win_ah = sum(p for (i, j), p in matrice_dc.items() if (i - j) + ligne_choisie > 0)
@@ -157,7 +193,6 @@ if submit:
         )
         st.caption("🟢 EV positif = Value Bet | 🔴 EV négatif = Pas de value")
 
-        # --- MATRICE DES SCORES ---
         st.markdown("---")
         st.markdown(f"### 🎯 Matrice des Scores Exacts (Corrigée Dixon-Coles ρ={rho})")
         
