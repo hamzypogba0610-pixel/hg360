@@ -7,7 +7,6 @@ CODES_LIGUES = {
 }
 
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
-    # (Le code précédent reste identique)
     if code_ligue not in CODES_LIGUES:
         return {"erreur": "Compétition non disponible."}
     code_api = CODES_LIGUES[code_ligue]
@@ -47,24 +46,18 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
     except Exception as e:
         return {"erreur": f"Erreur : {str(e)}"}
 
-# --- NOUVELLE FONCTION : MOYENNE DE LA LIGUE ---
 def recuperer_moyenne_ligue(code_ligue, api_key):
     if code_ligue not in CODES_LIGUES:
-        return 2.5 # Valeur par défaut
+        return 2.5
     code_api = CODES_LIGUES[code_ligue]
     headers = {"X-Auth-Token": api_key}
-    
     try:
-        # On récupère le classement (qui contient les stats de toutes les équipes)
         url = f"https://api.football-data.org/v4/competitions/{code_api}/standings"
         reponse = requests.get(url, headers=headers)
-        if reponse.status_code != 200:
-            return 2.5
-            
+        if reponse.status_code != 200: return 2.5
         standings = reponse.json().get("standings", [])
         if not standings: return 2.5
         
-        # On additionne tous les buts marqués et encaissés par toutes les équipes
         buts_total = 0
         matchs_total = 0
         for groupe in standings:
@@ -73,11 +66,33 @@ def recuperer_moyenne_ligue(code_ligue, api_key):
                 matchs_total += eq["playedGames"]
                 
         if matchs_total == 0: return 2.5
-        
-        # Chaque match est compté deux fois (une fois pour l'équipe A, une fois pour l'équipe B)
-        # Donc la moyenne de buts par match = total_buts / (total_matchs_joues_par_les_equipes / 2)
-        moyenne = buts_total / (matchs_total / 2)
-        return round(moyenne, 2)
-        
+        return round(buts_total / (matchs_total / 2), 2)
     except Exception:
         return 2.5
+
+# --- NOUVELLE FONCTION : RADAR DES MATCHS ---
+def recuperer_prochains_matchs(code_ligue, api_key, limite=5):
+    """Récupère les prochains matchs programmés d'une ligue (max 5 pour l'API)"""
+    if code_ligue not in CODES_LIGUES:
+        return []
+    code_api = CODES_LIGUES[code_ligue]
+    headers = {"X-Auth-Token": api_key}
+    try:
+        url = f"https://api.football-data.org/v4/competitions/{code_api}/matches?status=SCHEDULED"
+        reponse = requests.get(url, headers=headers)
+        if reponse.status_code != 200: return []
+        
+        matchs = reponse.json().get("matches", [])
+        # On ne garde que les X premiers pour ne pas exploser la limite de l'API
+        matchs = matchs[:limite]
+        
+        resultats = []
+        for m in matchs:
+            resultats.append({
+                "equipe_A": m["homeTeam"].get("name", m["homeTeam"].get("shortName")),
+                "equipe_B": m["awayTeam"].get("name", m["awayTeam"].get("shortName")),
+                "date": m["utcDate"][:10] # Garde juste la date AAAA-MM-JJ
+            })
+        return resultats
+    except Exception:
+        return []
