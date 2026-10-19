@@ -65,3 +65,18 @@ def calculer_indice_force(xG, tirs, tirs_cadres, occasions, moyenne_ligue):
     # Pondération : le xG pèse 50%, les tirs 20%, les cadrés 20%, les occasions 10%
     indice = (0.5 * score_xg) + (0.2 * score_tirs) + (0.2 * score_cadres) + (0.1 * score_occasions)
     return indice
+
+def calculer_indice_v5(possession, entrees_surface, ppda, qualite_adversaire):
+    """
+    Calcule l'indice de domination basé sur les stats avancées (V5).
+    """
+    # Normalisation (base 1.0 = la moyenne)
+    s_pos = possession / 50.0 if possession is not None else 1.0
+    s_box = entrees_surface / 15.0 if entrees_surface is not None else 1.0
+    s_ppda = 10.0 / ppda if (ppda is not None and ppda > 0) else 1.0
+    s_qual = qualite_adversaire / 3.0 if qualite_adversaire is not None else 1.0
+    
+    # Pondération : Box entries (40%), Possession (20%), PPDA (20%), Qualité Adv (20%)
+    indice = (s_pos * 0.2) + (s_box * 0.4) + (s_ppda * 0.2) + (s_qual * 0.2)
+    
+    return indice
