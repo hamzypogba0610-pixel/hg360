@@ -427,15 +427,17 @@ with tab2:
 # ==========================================
 with tab3:
     st.subheader("📡 Scanner Intelligent (GAMMA-X Activé)")
-    st.write("Le scanner va chercher les prochains matchs, appliquer les corrections GAMMA-X, et afficher uniquement les matchs qui dépassent ton seuil de probabilité.")
+    st.write("Le scanner va chercher les prochains matchs, appliquer les corrections GAMMA-X, et afficher uniquement les matchs qui dépassent ton seuil de fiabilité.")
     
     col_scan1, col_scan2, col_scan3 = st.columns(3)
     with col_scan1:
         ligue_radar = st.selectbox("Choisir la ligue à scanner", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_radar")
     with col_scan2:
-        seuil_over = st.slider("Probabilité minimale Over 2.5 (%)", 0, 100, 50, step=5, key="k_seuil_over")
+        # NOUVEAU : Menu déroulant pour le seuil Over
+        seuil_over = st.selectbox("Seuil de fiabilité Over 2.5", options=[60, 65, 70, 75, 80, 85, 90], index=3, key="k_seuil_over", format_func=lambda x: f"Minimum {x}%")
     with col_scan3:
-        seuil_btts = st.slider("Probabilité minimale BTTS (%)", 0, 100, 50, step=5, key="k_seuil_btts")
+        # NOUVEAU : Menu déroulant pour le seuil BTTS
+        seuil_btts = st.selectbox("Seuil de fiabilité BTTS", options=[60, 65, 70, 75, 80, 85, 90], index=3, key="k_seuil_btts", format_func=lambda x: f"Minimum {x}%")
         
     if st.button("🚀 Lancer le Scanner (Max 5 matchs)", key="k_btn_radar"):
         if not api_key:
@@ -466,12 +468,11 @@ with tab3:
                             lam_A = me.calculer_lambda(M_A, E_B, mu_radar)
                             lam_B = me.calculer_lambda(M_B, E_A, mu_radar)
                             
-                            # --- GAMMA-X : Application de la mémoire des erreurs ---
+                            # GAMMA-X : Application de la mémoire des erreurs
                             err_A = db.recuperer_memoire_equipe(eq_A)
                             err_B = db.recuperer_memoire_equipe(eq_B)
                             lam_A = gx.appliquer_correction_multiplicative(lam_A, err_A)
                             lam_B = gx.appliquer_correction_multiplicative(lam_B, err_B)
-                            # -----------------------------------------------------
                             
                             matrice_dc = dc.appliquer_correction(lam_A, lam_B, -0.05)
                             
@@ -479,7 +480,7 @@ with tab3:
                             p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
                             p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
                             
-                            # Filtre : On n'ajoute au tableau que si ça dépasse les seuils
+                            # Filtre : On n'ajoute au tableau que si ça dépasse les seuils choisis
                             if (over_25 * 100 >= seuil_over) or (p_btts * 100 >= seuil_btts):
                                 resultats_radar.append({
                                     "Date": m["date"],
@@ -492,12 +493,12 @@ with tab3:
                                 })
                     
                     if resultats_radar:
-                        st.success(f"✅ {len(resultats_radar)} match(s) correspond(ent) à tes critères !")
+                        st.success(f"✅ {len(resultats_radar)} match(s) correspond(ent) à tes critères de fiabilité !")
                         df_radar = pd.DataFrame(resultats_radar)
                         st.dataframe(df_radar, use_container_width=True, hide_index=True)
                         st.info("💡 **Next Step** : Note ces matchs, va dans l'onglet 'Analyse Simple' pour récupérer les cotes du bookmaker et voir les Value Bets.")
                     else:
-                        st.warning("Aucun match ne dépasse tes seuils de probabilité sur ce scan.")
+                        st.warning(f"Aucun match ne dépasse tes seuils (Over {seuil_over}% / BTTS {seuil_btts}%) sur ce scan.")
 
 # ==========================================
 # ONGLET 4 : CALIBRATION & BRIER SCORE
