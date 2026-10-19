@@ -23,7 +23,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚽ HYPER-GOALS 360</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Modèle ULTIMATE (xG + Shrinkage)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Modèle ULTIMATE (xG + Stats Avancées)</p>', unsafe_allow_html=True)
 
 if "historique" not in st.session_state:
     st.session_state.historique = []
@@ -31,7 +31,7 @@ if "historique" not in st.session_state:
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
-    st.success("🟢 Moteurs chargés :\n- Poisson / xG\n- Dixon-Coles\n- Handicap\n- Kelly")
+    st.success("🟢 Moteurs chargés :\n- Poisson / xG\n- Indices Avancés\n- Dixon-Coles\n- Handicap\n- Kelly")
     st.caption("HYPER-GOALS 360 V2.2")
     
     if len(st.session_state.historique) > 0:
@@ -41,36 +41,40 @@ with st.sidebar:
         st.download_button(label="📥 Télécharger l'historique", data=csv, file_name=f"hg360_{datetime.date.today()}.csv", mime="text/csv")
 
 with st.form("prediction_form"):
-    st.subheader("📊 1. Statistiques (xG ou Buts)")
-    st.info("💡 Utilise les xG (Expected Goals) de préférence. L'échantillon idéal est de 15 matchs (10 dom/ext + 5 récents).")
-    
+    st.subheader("📊 1. Statistiques de Base")
     ligue_choisie = st.selectbox("🏆 Compétition", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x])
     
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### 🏠 Équipe A (Domicile)")
         equipe_A = st.text_input("Nom de l'équipe A", placeholder="Ex: Arsenal")
-        n_A = st.number_input(
-            "Matchs pris en compte (A)", 
-            min_value=1, 
-            value=15, 
-            step=1, 
-            help="Idéalement : 10 matchs à domicile + 5 derniers matchs toutes compétitions."
-        )
+        n_A = st.number_input("Matchs pris en compte (A)", min_value=1, value=15, step=1, help="Idéalement 10 dom + 5 récents")
         M_A_brut = st.number_input("xG (ou Buts) marqués par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.5")
         E_A_brut = st.number_input("xGA (ou Buts) encaissés par A", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.0")
     with col2:
         st.markdown("### ✈️ Équipe B (Extérieur)")
         equipe_B = st.text_input("Nom de l'équipe B", placeholder="Ex: Chelsea")
-        n_B = st.number_input(
-            "Matchs pris en compte (B)", 
-            min_value=1, 
-            value=15, 
-            step=1, 
-            help="Idéalement : 10 matchs à l'extérieur + 5 derniers matchs toutes compétitions."
-        )
+        n_B = st.number_input("Matchs pris en compte (B)", min_value=1, value=15, step=1, help="Idéalement 10 ext + 5 récents")
         M_B_brut = st.number_input("xG (ou Buts) marqués par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.2")
         E_B_brut = st.number_input("xGA (ou Buts) encaissés par B", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
+
+    # --- NOUVEAU : MODE EXPERT (Stats avancées) ---
+    with st.expander("⚙️ Mode Expert : Statistiques Avancées (Optionnel)"):
+        st.write("Ajoute ces données pour affiner l'indice de force offensive et défensive (O et V).")
+        
+        col_exp_A, col_exp_B = st.columns(2)
+        with col_exp_A:
+            st.markdown(f"**{equipe_A if equipe_A else 'Équipe A'}**")
+            tirs_A = st.number_input("Tirs par match (A)", min_value=0.0, value=None, step=0.1)
+            cadres_A = st.number_input("Tirs cadrés par match (A)", min_value=0.0, value=None, step=0.1)
+            occasions_A = st.number_input("Grosses occasions (A)", min_value=0.0, value=None, step=0.1)
+            
+        with col_exp_B:
+            st.markdown(f"**{equipe_B if equipe_B else 'Équipe B'}**")
+            tirs_B = st.number_input("Tirs par match (B)", min_value=0.0, value=None, step=0.1)
+            cadres_B = st.number_input("Tirs cadrés par match (B)", min_value=0.0, value=None, step=0.1)
+            occasions_B = st.number_input("Grosses occasions (B)", min_value=0.0, value=None, step=0.1)
+    # -----------------------------------------------
     
     st.markdown("---")
     st.subheader("💰 2. Cotes & Paramètres")
@@ -102,23 +106,38 @@ with st.form("prediction_form"):
 if submit:
     if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
-        # --- ÉTAPE 1 : SHRINKAGE ---
+        # 1. Shrinkage
         M_A = me.appliquer_shrinkage(M_A_brut, n_A, mu)
         E_A = me.appliquer_shrinkage(E_A_brut, n_A, mu)
         M_B = me.appliquer_shrinkage(M_B_brut, n_B, mu)
         E_B = me.appliquer_shrinkage(E_B_brut, n_B, mu)
         
-        # --- ÉTAPE 2 : CALCUL DES LAMBDAS ---
-        lam_A = me.calculer_lambda(M_A, E_B, mu)
-        lam_B = me.calculer_lambda(M_B, E_A, mu)
+        # 2. Calcul des indices de force (O et V) si Mode Expert rempli
+        multiplicateur_A = 1.0
+        multiplicateur_B = 1.0
+        
+        if all(v is not None for v in [tirs_A, cadres_A, occasions_A, tirs_B, cadres_B, occasions_B]):
+            # Indice Offensif A vs Indice Défensif B
+            indice_off_A = me.calculer_indice_force(M_A, tirs_A, cadres_A, occasions_A, mu)
+            indice_def_B = me.calculer_indice_force(E_B, tirs_B, cadres_B, occasions_B, mu) # E_B représente les tirs concédés
+            multiplicateur_A = (indice_off_A + indice_def_B) / 2.0
+            
+            # Indice Offensif B vs Indice Défensif A
+            indice_off_B = me.calculer_indice_force(M_B, tirs_B, cadres_B, occasions_B, mu)
+            indice_def_A = me.calculer_indice_force(E_A, tirs_A, cadres_A, occasions_A, mu)
+            multiplicateur_B = (indice_off_B + indice_def_A) / 2.0
+            st.info("⚙️ Mode Expert activé : Les indices de Tirs/Cadrés/Occasions ont été intégrés au calcul.")
+        
+        # 3. Calcul des Lambdas
+        lam_A = me.calculer_lambda(M_A, E_B, mu) * multiplicateur_A
+        lam_B = me.calculer_lambda(M_B, E_A, mu) * multiplicateur_B
         matrice_dc = dc.appliquer_correction(lam_A, lam_B, rho)
         
         st.success(f"✅ Analyse terminée : **{equipe_A}** vs **{equipe_B}**")
         
-        # Calcul du poids de confiance pour l'affichage
         poids_A = n_A / (n_A + 5) * 100
         poids_B = n_B / (n_B + 5) * 100
-        st.caption(f"📊 **Shrinkage** : Confiance de {poids_A:.0f}% dans les stats de {equipe_A} et {poids_B:.0f}% dans celles de {equipe_B} (le reste est ramené vers la moyenne du championnat).")
+        st.caption(f"📊 **Shrinkage** : Confiance de {poids_A:.0f}% dans les stats de {equipe_A} et {poids_B:.0f}% dans celles de {equipe_B}.")
         
         over_line_dc = sum(p for (i, j), p in matrice_dc.items() if i + j > ligne_ou)
         push_line = sum(p for (i, j), p in matrice_dc.items() if i + j == ligne_ou)
@@ -162,4 +181,4 @@ if submit:
         st.dataframe(df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None), use_container_width=True)
 
     else:
-        st.warning("⚠️ Veuillez remplir tous les champs.")
+        st.warning("⚠️ Veuillez remplir tous les champs de base.")
