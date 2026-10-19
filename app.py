@@ -1,6 +1,7 @@
 import streamlit as st
 from leagues import CHAMPIONNATS
 import math_engine as me
+import asian_handicap as ah
 import pandas as pd
 
 # 1. Configuration de la page
@@ -28,7 +29,7 @@ st.markdown('<p class="sub-title">Moteur d\'analyse probabiliste</p>', unsafe_al
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/53/53283.png", width=70)
     st.header("Panneau de contrôle")
-    st.info("💡 Entre les statistiques des équipes pour lancer le calcul de Poisson.")
+    st.info("💡 Remplis les statistiques et choisis ta ligne de handicap.")
     st.caption("HYPER-GOALS 360 V2.2")
 
 # 5. Le Formulaire de saisie
@@ -39,26 +40,37 @@ with st.form("prediction_form"):
     
     col1, col2 = st.columns(2)
     
+    # On met value=None pour que la case soit vide au départ !
     with col1:
         st.markdown("### 🏠 Équipe A (Domicile)")
         equipe_A = st.text_input("Nom de l'équipe A", placeholder="Ex: Arsenal")
-        M_A = st.number_input("Buts marqués par A (moyenne)", min_value=0.0, value=1.5, step=0.1)
-        E_A = st.number_input("Buts encaissés par A (moyenne)", min_value=0.0, value=1.0, step=0.1)
+        M_A = st.number_input("Buts marqués par A (moyenne)", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.5")
+        E_A = st.number_input("Buts encaissés par A (moyenne)", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.0")
         
     with col2:
         st.markdown("### ✈️ Équipe B (Extérieur)")
         equipe_B = st.text_input("Nom de l'équipe B", placeholder="Ex: Chelsea")
-        M_B = st.number_input("Buts marqués par B (moyenne)", min_value=0.0, value=1.2, step=0.1)
-        E_B = st.number_input("Buts encaissés par B (moyenne)", min_value=0.0, value=1.1, step=0.1)
+        M_B = st.number_input("Buts marqués par B (moyenne)", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.2")
+        E_B = st.number_input("Buts encaissés par B (moyenne)", min_value=0.0, value=None, step=0.1, placeholder="Ex: 1.1")
     
     st.markdown("---")
-    mu = st.number_input("Moyenne de buts du championnat (μ)", min_value=0.1, value=1.3, step=0.1)
     
+    col_param, col_ah = st.columns(2)
+    with col_param:
+        mu = st.number_input("Moyenne de buts du championnat (μ)", min_value=0.1, value=None, step=0.1, placeholder="Ex: 1.3")
+    
+    with col_ah:
+        # Liste officielle des lignes de Handicap Asiatique
+        lignes_ah = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+        ligne_choisie = st.selectbox("Ligne de Handicap pour l'Équipe A", options=lignes_ah, index=8) # 0.0 par défaut
+
     submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
 # 6. Affichage des résultats
 if submit:
-    if equipe_A and equipe_B:
+    # On vérifie que TOUS les champs sont remplis (pas de None)
+    if equipe_A and equipe_B and M_A is not None and E_A is not None and M_B is not None and E_B is not None and mu is not None:
+        
         # Calcul des lambdas via notre moteur
         lam_A = me.calculer_lambda(M_A, E_B, mu)
         lam_B = me.calculer_lambda(M_B, E_A, mu)
@@ -78,31 +90,45 @@ if submit:
         col_ou1.metric(label="🔴 Over 2.5 (Plus de 2 buts)", value=f"{over_25*100:.1f} %")
         col_ou2.metric(label="🟢 Under 2.5 (Moins de 3 buts)", value=f"{under_25*100:.1f} %")
         
-        # --- NOUVEAU : MATRICE COMPLÈTE DES SCORES EXACTS ---
+        # --- NOUVEAU : AFFICHAGE DU HANDICAP ASIATIQUE ---
+        st.markdown(f"### ⚔️ Handicap Asiatique ({ligne_choisie} pour {equipe_A})")
+        
+        resultat_ah = ah.calculer_handicap_asiatique(lam_A, lam_B, ligne_choisie)
+        
+        if resultat_ah["type"] == "normal":
+            col_ah1, col_ah2, col_ah3 = st.columns(3)
+            col_ah1.metric("Victoire", f"{resultat_ah['win']*100:.1f} %")
+            col_ah2.metric("Match Nul (Remboursé)", f"{resultat_ah['push']*100:.1f} %")
+            col_ah3.metric("Défaite", f"{resultat_ah['lose']*100:.1f} %")
+        else:
+            col_ah1, col_ah2, col_ah3, col_ah4 = st.columns(4)
+            col_ah1.metric("Gain Total", f"{resultat_ah['full_win']*100:.1f} %")
+            col_ah2.metric("Gain Partiel (Demi)", f"{resultat_ah['half_win']*100:.1f} %")
+            col_ah3.metric("Perte Partielle (Demi)", f"{resultat_ah['half_lose']*100:.1f} %")
+            col_ah4.metric("Perte Totale", f"{resultat_ah['full_lose']*100:.1f} %")
+        # -------------------------------------------------
+
+        # Matrice complète des scores exacts
         st.markdown("### 🎯 Matrice des Scores Exacts (Probabilités en %)")
         
-        # Création de la grille (de 0 à 4 buts pour chaque équipe)
         matrice_scores = []
         for buts_A in range(5):
             ligne = []
             for buts_B in range(5):
                 proba = me.calculer_score_exact(lam_A, lam_B, buts_A, buts_B)
-                ligne.append(proba * 100) # Convertir en pourcentage
+                ligne.append(proba * 100)
             matrice_scores.append(ligne)
             
-        # Création du tableau avec Pandas pour un affichage propre
         df_scores = pd.DataFrame(
             matrice_scores,
             index=[f"{i} but(s) {equipe_A}" for i in range(5)],
             columns=[f"{j} but(s) {equipe_B}" for j in range(5)]
         )
         
-        # Affichage du tableau avec un formatage (1 chiffre après la virgule et le signe %)
         st.dataframe(
             df_scores.style.format("{:.1f} %").background_gradient(cmap="Greens", axis=None),
             use_container_width=True
         )
-        # ----------------------------------------------------
 
     else:
-        st.warning("⚠️ Veuillez entrer le nom des deux équipes.")
+        st.warning("⚠️ Veuillez remplir TOUS les champs (noms des équipes et statistiques) pour lancer l'analyse.")
