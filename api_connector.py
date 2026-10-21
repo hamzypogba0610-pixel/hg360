@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 from datetime import datetime, timedelta
+import math
 
 CODES_LIGUES = {
     "EPL": "PL", "CHAMPIONSHIP": "ELC", "BUNDES": "BL1", "SERIEA": "SA",
@@ -25,29 +26,23 @@ def recuperer_liste_equipes(code_ligue, api_key):
         return []
 
 def extraire_score_valide(match_data):
-    """
-    Extrait le score d'un match en essayant plusieurs sources.
-    Ordre de priorité : regularTime (90 min) -> fullTime -> extraTime
-    Retourne (home_score, away_score) ou (None, None) si aucun score valide.
-    """
     score = match_data.get("score", {})
     
-    # Essai 1 : regularTime (score à la fin du temps réglementaire)
+    def est_valide(val):
+        return val is not None and not (isinstance(val, float) and math.isnan(val))
+    
     rt = score.get("regularTime", {}) or {}
-    if rt.get("home") is not None and rt.get("away") is not None:
+    if est_valide(rt.get("home")) and est_valide(rt.get("away")):
         return rt["home"], rt["away"]
     
-    # Essai 2 : fullTime (score à la fin du match, peut inclure prolongations)
     ft = score.get("fullTime", {}) or {}
-    if ft.get("home") is not None and ft.get("away") is not None:
+    if est_valide(ft.get("home")) and est_valide(ft.get("away")):
         return ft["home"], ft["away"]
     
-    # Essai 3 : extraTime (score après prolongations)
     et = score.get("extraTime", {}) or {}
-    if et.get("home") is not None and et.get("away") is not None:
+    if est_valide(et.get("home")) and est_valide(et.get("away")):
         return et["home"], et["away"]
     
-    # Aucun score disponible
     return None, None
 
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
@@ -75,7 +70,6 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
             liste_dispo = [eq.get("name") for eq in equipes]
             return {"erreur": f"Introuvable. Équipes dispos : {', '.join(liste_dispo)}"}
         
-        # NOUVEAU : On récupère 40 matchs au lieu de 15 (pour compenser les scores vides en UCL)
         url_matchs = f"https://api.football-data.org/v4/teams/{equipe_id}/matches?status=FINISHED&limit=40"
         matchs = requests.get(url_matchs, headers=headers).json().get("matches", [])
         
@@ -85,12 +79,11 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
         bm, be = 0, 0
         matchs_valides = 0
         
-        # On parcourt les matchs et on essaie plusieurs sources de score
         for m in matchs:
             home_score, away_score = extraire_score_valide(m)
             
             if home_score is None or away_score is None:
-                continue  # Match vraiment vide (forfait, annulé, données manquantes)
+                continue
             
             if m["homeTeam"]["id"] == equipe_id:
                 bm += home_score
@@ -101,31 +94,24 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
             
             matchs_valides += 1
             
-            # On s'arrête dès qu'on a 15 matchs valides (comme la fenêtre standard)
             if matchs_valides >= 15:
                 break
         
-        # Vérification de la qualité de l'échantillon
         if matchs_valides == 0:
-            return {"erreur": "Aucun match avec score valide trouvé (données API incomplètes)."}
+            return {"erreur": "Aucun match avec score valide trouvé."}
         
-        # Calcul des moyennes
         moy_marques = round(bm / matchs_valides, 2)
         moy_encaisses = round(be / matchs_valides, 2)
         
-        # On retourne les stats avec un avertissement si l'échantillon est petit
-        result = {
+        if math.isnan(moy_marques): moy_marques = 0.0
+        if math.isnan(moy_encaisses): moy_encaisses = 0.0
+        
+        return {
             "nom": nom_officiel, 
             "matchs": matchs_valides, 
             "moy_marques": moy_marques, 
             "moy_encaisses": moy_encaisses
         }
-        
-        # Alerte si on a moins de 10 matchs valides (données peu fiables)
-        if matchs_valides < 10:
-            result["alerte"] = f"⚠️ Seulement {matchs_valides} matchs valides trouvés (données incomplètes sur cette compétition)."
-        
-        return result
         
     except Exception as e:
         return {"erreur": f"Erreur : {str(e)}"}
