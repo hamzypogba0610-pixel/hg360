@@ -24,6 +24,32 @@ def recuperer_liste_equipes(code_ligue, api_key):
     except Exception:
         return []
 
+def extraire_score_valide(match_data):
+    """
+    Extrait le score d'un match en essayant plusieurs sources.
+    Ordre de priorité : regularTime (90 min) -> fullTime -> extraTime
+    Retourne (home_score, away_score) ou (None, None) si aucun score valide.
+    """
+    score = match_data.get("score", {})
+    
+    # Essai 1 : regularTime (score à la fin du temps réglementaire)
+    rt = score.get("regularTime", {}) or {}
+    if rt.get("home") is not None and rt.get("away") is not None:
+        return rt["home"], rt["away"]
+    
+    # Essai 2 : fullTime (score à la fin du match, peut inclure prolongations)
+    ft = score.get("fullTime", {}) or {}
+    if ft.get("home") is not None and ft.get("away") is not None:
+        return ft["home"], ft["away"]
+    
+    # Essai 3 : extraTime (score après prolongations)
+    et = score.get("extraTime", {}) or {}
+    if et.get("home") is not None and et.get("away") is not None:
+        return et["home"], et["away"]
+    
+    # Aucun score disponible
+    return None, None
+
 def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
     if code_ligue not in CODES_LIGUES:
         return {"erreur": "Compétition non disponible."}
@@ -48,19 +74,59 @@ def recuperer_stats_equipe(nom_equipe, code_ligue, api_key):
         if not equipe_id:
             liste_dispo = [eq.get("name") for eq in equipes]
             return {"erreur": f"Introuvable. Équipes dispos : {', '.join(liste_dispo)}"}
-            
-        url_matchs = f"https://api.football-data.org/v4/teams/{equipe_id}/matches?status=FINISHED&limit=15"
+        
+        # NOUVEAU : On récupère 40 matchs au lieu de 15 (pour compenser les scores vides en UCL)
+        url_matchs = f"https://api.football-data.org/v4/teams/{equipe_id}/matches?status=FINISHED&limit=40"
         matchs = requests.get(url_matchs, headers=headers).json().get("matches", [])
-        if not matchs: return {"erreur": "Pas assez de matchs."}
+        
+        if not matchs: 
+            return {"erreur": "Aucun match terminé trouvé pour cette équipe."}
         
         bm, be = 0, 0
+        matchs_valides = 0
+        
+        # On parcourt les matchs et on essaie plusieurs sources de score
         for m in matchs:
+            home_score, away_score = extraire_score_valide(m)
+            
+            if home_score is None or away_score is None:
+                continue  # Match vraiment vide (forfait, annulé, données manquantes)
+            
             if m["homeTeam"]["id"] == equipe_id:
-                bm += m["score"]["fullTime"]["home"]; be += m["score"]["fullTime"]["away"]
+                bm += home_score
+                be += away_score
             else:
-                bm += m["score"]["fullTime"]["away"]; be += m["score"]["fullTime"]["home"]
-                
-        return {"nom": nom_officiel, "matchs": len(matchs), "moy_marques": round(bm/len(matchs), 2), "moy_encaisses": round(be/len(matchs), 2)}
+                bm += away_score
+                be += home_score
+            
+            matchs_valides += 1
+            
+            # On s'arrête dès qu'on a 15 matchs valides (comme la fenêtre standard)
+            if matchs_valides >= 15:
+                break
+        
+        # Vérification de la qualité de l'échantillon
+        if matchs_valides == 0:
+            return {"erreur": "Aucun match avec score valide trouvé (données API incomplètes)."}
+        
+        # Calcul des moyennes
+        moy_marques = round(bm / matchs_valides, 2)
+        moy_encaisses = round(be / matchs_valides, 2)
+        
+        # On retourne les stats avec un avertissement si l'échantillon est petit
+        result = {
+            "nom": nom_officiel, 
+            "matchs": matchs_valides, 
+            "moy_marques": moy_marques, 
+            "moy_encaisses": moy_encaisses
+        }
+        
+        # Alerte si on a moins de 10 matchs valides (données peu fiables)
+        if matchs_valides < 10:
+            result["alerte"] = f"⚠️ Seulement {matchs_valides} matchs valides trouvés (données incomplètes sur cette compétition)."
+        
+        return result
+        
     except Exception as e:
         return {"erreur": f"Erreur : {str(e)}"}
 
@@ -89,7 +155,6 @@ def recuperer_moyenne_ligue(code_ligue, api_key):
         return 2.5
 
 def recuperer_prochains_matchs(code_ligue, api_key, limite=5, jours_max=None):
-    """Récupère les prochains matchs programmés avec filtre de date optionnel."""
     if code_ligue not in CODES_LIGUES:
         return []
     code_api = CODES_LIGUES[code_ligue]
@@ -102,7 +167,6 @@ def recuperer_prochains_matchs(code_ligue, api_key, limite=5, jours_max=None):
             return []
         
         matchs_api = reponse.json().get("matches", [])
-        
         aujourd_hui = datetime.now().date()
         
         matchs_filtres = []
