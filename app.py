@@ -121,7 +121,7 @@ with tab1:
             else:
                 with st.spinner("Calcul de la moyenne..."):
                     mu_auto = api.recuperer_moyenne_ligue(ligue_A, api_key)
-                    st.session_state.mu_auto = mu_auto
+                    st.session_state["k_mu_final"] = mu_auto
                     st.success(f"Moyenne (μ) trouvée : {mu_auto}")
 
         if bouton_recup:
@@ -135,17 +135,27 @@ with tab1:
                     if "erreur" in stats_A or "erreur" in stats_B:
                         st.error(stats_A.get("erreur", stats_B.get("erreur", "Erreur")))
                     else:
-                        st.session_state.stats_auto_A = stats_A
-                        st.session_state.stats_auto_B = stats_B
-                        st.success("✅ Données récupérées !")
+                        # CORRECTIF : Injection directe dans le Session State
+                        st.session_state["k_n_A"] = stats_A["matchs"]
+                        st.session_state["k_M_A"] = stats_A["moy_marques"]
+                        st.session_state["k_E_A"] = stats_A["moy_encaisses"]
+                        
+                        st.session_state["k_n_B"] = stats_B["matchs"]
+                        st.session_state["k_M_B"] = stats_B["moy_marques"]
+                        st.session_state["k_E_B"] = stats_B["moy_encaisses"]
+                        
+                        st.success("✅ Données récupérées et écrites !")
         
-        defaut_A_marques = st.session_state.stats_auto_A["moy_marques"] if "stats_auto_A" in st.session_state else None
-        defaut_A_encaisses = st.session_state.stats_auto_A["moy_encaisses"] if "stats_auto_A" in st.session_state else None
-        defaut_A_matchs = st.session_state.stats_auto_A["matchs"] if "stats_auto_A" in st.session_state else 15
-        defaut_B_marques = st.session_state.stats_auto_B["moy_marques"] if "stats_auto_B" in st.session_state else None
-        defaut_B_encaisses = st.session_state.stats_auto_B["moy_encaisses"] if "stats_auto_B" in st.session_state else None
-        defaut_B_matchs = st.session_state.stats_auto_B["matchs"] if "stats_auto_B" in st.session_state else 15
-        defaut_mu = st.session_state.mu_auto if "mu_auto" in st.session_state else 2.8
+        # Valeurs par défaut
+        defaut_A_matchs = st.session_state.get("k_n_A", 15)
+        defaut_A_marques = st.session_state.get("k_M_A", None)
+        defaut_A_encaisses = st.session_state.get("k_E_A", None)
+        
+        defaut_B_matchs = st.session_state.get("k_n_B", 15)
+        defaut_B_marques = st.session_state.get("k_M_B", None)
+        defaut_B_encaisses = st.session_state.get("k_E_B", None)
+        
+        defaut_mu = st.session_state.get("k_mu_final", 2.8)
 
         st.markdown("**Statistiques de Base (Modifiables) :**")
         colA, colB = st.columns(2)
