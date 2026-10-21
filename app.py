@@ -78,16 +78,14 @@ tab1, tab2, tab3, tab4 = st.tabs(["🔍 Analyse Simple", "🌳 Écologie du But"
 with tab1:
     st.subheader("📊 1. Sélection du Match")
     
-    # NOUVEAU : On détecte automatiquement si c'est une coupe
     LIGUES_COUPES = ["UCL", "EURO", "WORLD_CUP", "COUPE_NATIONALE"]
     liste_affichage = list(CHAMPIONNATS.keys()) + ["COUPE_NATIONALE"]
-    
     ligue_choisie = st.selectbox("🏆 Compétition", options=liste_affichage, format_func=lambda x: CHAMPIONNATS.get(x, "Coupe Nationale (Hybride)"), key="k_ligue")
     
     est_une_coupe = ligue_choisie in LIGUES_COUPES
     
     if est_une_coupe:
-        st.info("🛡️ **Mode Coupe détecté** : Le bot va utiliser le Cross-League Mapping pour trouver les équivalents statistiques dans les championnats domestiques.")
+        st.info("🛡️ **Mode Coupe détecté** : Le bot va utiliser le Cross-League Mapping pour trouver les équivalents statistiques.")
         col_cup1, col_cup2 = st.columns(2)
         with col_cup1:
             ligue_A = st.selectbox("Ligue d'origine de l'équipe A", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_cup_A")
@@ -99,6 +97,11 @@ with tab1:
 
     liste_equipes_A = api.recuperer_liste_equipes(ligue_A, api_key)
     liste_equipes_B = api.recuperer_liste_equipes(ligue_B, api_key)
+
+    # Initialisation de la mémoire (Session State) pour éviter les conflits de widgets
+    for key in ["k_n_A", "k_M_A", "k_E_A", "k_n_B", "k_M_B", "k_E_B"]:
+        if key not in st.session_state: st.session_state[key] = None
+    if "k_mu_final" not in st.session_state: st.session_state["k_mu_final"] = 2.8
 
     with st.form("prediction_form"):
         col1, col2 = st.columns(2)
@@ -141,6 +144,8 @@ with tab1:
                     if "erreur" in stats_A or "erreur" in stats_B:
                         st.error(stats_A.get("erreur", stats_B.get("erreur", "Erreur")))
                     else:
+                        st.session_state["stats_auto_A"] = stats_A
+                        st.session_state["stats_auto_B"] = stats_B
                         st.session_state["k_n_A"] = stats_A["matchs"]
                         st.session_state["k_M_A"] = stats_A["moy_marques"]
                         st.session_state["k_E_A"] = stats_A["moy_encaisses"]
@@ -148,27 +153,19 @@ with tab1:
                         st.session_state["k_M_B"] = stats_B["moy_marques"]
                         st.session_state["k_E_B"] = stats_B["moy_encaisses"]
                         st.success("✅ Données récupérées et écrites !")
-        
-        defaut_A_matchs = st.session_state.get("k_n_A", 15)
-        defaut_A_marques = st.session_state.get("k_M_A", None)
-        defaut_A_encaisses = st.session_state.get("k_E_A", None)
-        defaut_B_matchs = st.session_state.get("k_n_B", 15)
-        defaut_B_marques = st.session_state.get("k_M_B", None)
-        defaut_B_encaisses = st.session_state.get("k_E_B", None)
-        defaut_mu = st.session_state.get("k_mu_final", 2.8)
 
         st.markdown("**Statistiques de Base (Modifiables) :**")
         colA, colB = st.columns(2)
         with colA:
             st.markdown(f"**{equipe_A.strip() if equipe_A else 'Équipe A'}**")
-            n_A = st.number_input("Matchs (A)", min_value=1, value=defaut_A_matchs, step=1, key="k_n_A")
-            M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, value=defaut_A_marques, step=0.1, key="k_M_A")
-            E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, value=defaut_A_encaisses, step=0.1, key="k_E_A")
+            n_A = st.number_input("Matchs (A)", min_value=1, step=1, key="k_n_A")
+            M_A_brut = st.number_input("Buts/xG marqués (A)", min_value=0.0, step=0.1, key="k_M_A")
+            E_A_brut = st.number_input("Buts/xG encaissés (A)", min_value=0.0, step=0.1, key="k_E_A")
         with colB:
             st.markdown(f"**{equipe_B.strip() if equipe_B else 'Équipe B'}**")
-            n_B = st.number_input("Matchs (B)", min_value=1, value=defaut_B_matchs, step=1, key="k_n_B")
-            M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, value=defaut_B_marques, step=0.1, key="k_M_B")
-            E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, value=defaut_B_encaisses, step=0.1, key="k_E_B")
+            n_B = st.number_input("Matchs (B)", min_value=1, step=1, key="k_n_B")
+            M_B_brut = st.number_input("Buts/xG marqués (B)", min_value=0.0, step=0.1, key="k_M_B")
+            E_B_brut = st.number_input("Buts/xG encaissés (B)", min_value=0.0, step=0.1, key="k_E_B")
 
         with st.expander("⚙️ Mode Expert : Statistiques Avancées"):
             col_exp_A, col_exp_B = st.columns(2)
@@ -199,7 +196,7 @@ with tab1:
         
         col_c1, col_c2, col_c3 = st.columns(3)
         with col_c1:
-            mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, value=defaut_mu, step=0.1, key="k_mu_final")
+            mu = st.number_input("Moyenne de buts (μ)", min_value=0.1, step=0.1, key="k_mu_final")
             ligne_ou = st.number_input("Ligne Over/Under", min_value=0.5, max_value=10.0, value=2.5, step=0.25, key="k_ligne_ou_final")
             cote_ou = st.number_input(f"Cote Over {ligne_ou}", min_value=1.01, value=None, step=0.05, key="k_cote_ou_final")
         with col_c2:
@@ -222,6 +219,10 @@ with tab1:
         submit = st.form_submit_button("🚀 ANALYSER LE MATCH", use_container_width=True)
 
 if submit:
+    # Récupération sécurisée des stats depuis la mémoire globale
+    stats_A_saved = st.session_state.get("stats_auto_A", None)
+    stats_B_saved = st.session_state.get("stats_auto_B", None)
+    
     if equipe_A and equipe_B and M_A_brut is not None and E_A_brut is not None and M_B_brut is not None and E_B_brut is not None and mu is not None:
         
         nom_A = equipe_A.strip()
@@ -235,38 +236,36 @@ if submit:
         lam_A_base = me.calculer_lambda(M_A, E_B, mu)
         lam_B_base = me.calculer_lambda(M_B, E_A, mu)
         
-        # --- NOUVEAU : CROSS-LEAGUE MAPPING POUR LES COUPES ---
+        # --- CROSS-LEAGUE MAPPING ---
         if est_une_coupe and ligue_A != ligue_B:
             st.markdown("### 🔄 Cross-League Mapping (Traduction Inter-Championnats)")
             
-            # On récupère les classements
-            class_A = api.recuperer_classement_ligue(ligue_A, api_key)
-            class_B = api.recuperer_classement_ligue(ligue_B, api_key)
-            
-            # On cherche les équivalents
-            eq_A_in_B = me.trouver_equivalent_equipe(stats_A, class_B)
-            eq_B_in_A = me.trouver_equivalent_equipe(stats_B, class_A)
-            
-            if eq_A_in_B and eq_B_in_A:
-                st.info(f"🧠 **Analyse** : {nom_A} (en {CHAMPIONNATS[ligue_A]}) vaut statistiquement **{eq_A_in_B['nom']}** (en {CHAMPIONNATS[ligue_B]}).")
-                st.info(f"🧠 **Analyse** : {nom_B} (en {CHAMPIONNATS[ligue_B]}) vaut statistiquement **{eq_B_in_A['nom']}** (en {CHAMPIONNATS[ligue_A]}).")
+            if stats_A_saved and stats_B_saved:
+                class_A = api.recuperer_classement_ligue(ligue_A, api_key)
+                class_B = api.recuperer_classement_ligue(ligue_B, api_key)
                 
-                # Calcul basé sur la ligue A (EPL)
-                mu_A = api.recuperer_moyenne_ligue(ligue_A, api_key)
-                lam_A_calc_A = me.calculer_lambda(M_A, eq_B_in_A["moy_encaisses"], mu_A)
-                lam_B_calc_A = me.calculer_lambda(eq_B_in_A["moy_marques"], E_A, mu_A)
+                eq_A_in_B = me.trouver_equivalent_equipe(stats_A_saved, class_B)
+                eq_B_in_A = me.trouver_equivalent_equipe(stats_B_saved, class_A)
                 
-                # Calcul basé sur la ligue B (Ligue 1)
-                mu_B = api.recuperer_moyenne_ligue(ligue_B, api_key)
-                lam_A_calc_B = me.calculer_lambda(eq_A_in_B["moy_marques"], E_B, mu_B)
-                lam_B_calc_B = me.calculer_lambda(M_B, eq_A_in_B["moy_encaisses"], mu_B)
-                
-                # Moyenne des deux
-                lam_A_base = (lam_A_calc_A + lam_A_calc_B) / 2
-                lam_B_base = (lam_B_calc_A + lam_B_calc_B) / 2
-                
-                st.success(f"✅ λ {nom_A} ajusté par Cross-League : {lam_A_base:.2f} | λ {nom_B} ajusté : {lam_B_base:.2f}")
-        # -----------------------------------------------------
+                if eq_A_in_B and eq_B_in_A:
+                    st.info(f"🧠 **Analyse** : {nom_A} (en {CHAMPIONNATS[ligue_A]}) vaut statistiquement **{eq_A_in_B['nom']}** (en {CHAMPIONNATS[ligue_B]}).")
+                    st.info(f"🧠 **Analyse** : {nom_B} (en {CHAMPIONNATS[ligue_B]}) vaut statistiquement **{eq_B_in_A['nom']}** (en {CHAMPIONNATS[ligue_A]}).")
+                    
+                    mu_A = api.recuperer_moyenne_ligue(ligue_A, api_key)
+                    lam_A_calc_A = me.calculer_lambda(M_A, eq_B_in_A["moy_encaisses"], mu_A)
+                    lam_B_calc_A = me.calculer_lambda(eq_B_in_A["moy_marques"], E_A, mu_A)
+                    
+                    mu_B = api.recuperer_moyenne_ligue(ligue_B, api_key)
+                    lam_A_calc_B = me.calculer_lambda(eq_A_in_B["moy_marques"], E_B, mu_B)
+                    lam_B_calc_B = me.calculer_lambda(M_B, eq_A_in_B["moy_encaisses"], mu_B)
+                    
+                    lam_A_base = (lam_A_calc_A + lam_A_calc_B) / 2
+                    lam_B_base = (lam_B_calc_A + lam_B_calc_B) / 2
+                    
+                    st.success(f"✅ λ {nom_A} ajusté : {lam_A_base:.2f} | λ {nom_B} ajusté : {lam_B_base:.2f}")
+            else:
+                st.warning("⚠️ Clique d'abord sur 'Récupérer Stats Équipes' pour activer le Cross-League Mapping.")
+        # -----------------------------
 
         lam_A_avance = None
         lam_B_avance = None
@@ -368,8 +367,6 @@ if submit:
 
         st.markdown("---")
         st.markdown("### 🔮 Simulateur Contrefactuel (What-If)")
-        st.write("Ajuste artificiellement la performance des équipes pour voir l'impact sur les probabilités.")
-        
         col_cf1, col_cf2 = st.columns(2)
         with col_cf1:
             impact_A_pct = st.slider("Ajustement Performance Équipe A (%)", -50, 50, 0, step=5, key="k_cf_A")
@@ -378,10 +375,8 @@ if submit:
         
         mult_A = 1 + (impact_A_pct / 100)
         mult_B = 1 + (impact_B_pct / 100)
-        
         lam_A_cf = lam_A * mult_A
         lam_B_cf = lam_B * mult_B
-        
         matrice_cf = dc.appliquer_correction(lam_A_cf, lam_B_cf, rho)
         
         over_cf = sum(p for (i, j), p in matrice_cf.items() if i + j > ligne_ou)
@@ -397,38 +392,46 @@ if submit:
 
 with tab2:
     st.subheader("🌳 Écologie du But - Analyse Contextuelle")
-    st.write("Notez chaque couche de 0 à 10 pour évaluer la pression offensive réelle.")
+    st.write("Notez chaque couche de 0 à 10 pour évaluer la pression offensive réelle, au-delà des simples statistiques.")
+    
     col_eco_A, col_eco_B = st.columns(2)
+    
     with col_eco_A:
         st.markdown("### 🏠 Équipe A")
-        c_A = st.slider("1. Contexte", 0, 10, 5, key="c_A")
-        t_A = st.slider("2. Tactique", 0, 10, 5, key="t_A")
-        m_A = st.slider("3. Moteur", 0, 10, 5, key="m_A")
-        d_A = st.slider("4. Fragilité adverse", 0, 10, 5, key="d_A")
-        v_A = st.slider("5. Variance", 0, 10, 5, key="v_A")
+        c_A = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_A")
+        t_A = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_A")
+        m_A = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_A")
+        d_A = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_A")
+        v_A = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_A")
         pression_A = eco.calculer_pression_offensive(c_A, t_A, m_A, d_A, v_A)
         st.info(f"**Score de Pression A : {pression_A} / 100**")
+
     with col_eco_B:
         st.markdown("### ✈️ Équipe B")
-        c_B = st.slider("1. Contexte", 0, 10, 5, key="c_B")
-        t_B = st.slider("2. Tactique", 0, 10, 5, key="t_B")
-        m_B = st.slider("3. Moteur", 0, 10, 5, key="m_B")
-        d_B = st.slider("4. Fragilité adverse", 0, 10, 5, key="d_B")
-        v_B = st.slider("5. Variance", 0, 10, 5, key="v_B")
+        c_B = st.slider("1. Contexte (Enjeu, motivation)", 0, 10, 5, key="c_B")
+        t_B = st.slider("2. Tactique (Duel de styles)", 0, 10, 5, key="t_B")
+        m_B = st.slider("3. Moteur (xG, occasions)", 0, 10, 5, key="m_B")
+        d_B = st.slider("4. Fragilité défensive adverse", 0, 10, 5, key="d_B")
+        v_B = st.slider("5. Variance (Finition)", 0, 10, 5, key="v_B")
         pression_B = eco.calculer_pression_offensive(c_B, t_B, m_B, d_B, v_B)
         st.info(f"**Score de Pression B : {pression_B} / 100**")
+
     st.markdown("---")
     st.subheader("Dynamique du Match")
     bonus_dyn = st.slider("Bonus / Malus de dynamique", -10, 10, 0, key="k_bonus_dyn")
+    
     if st.button("📊 CALCULER L'INDICE DE BUTS", use_container_width=True, key="k_btn_eco"):
         indice_final = eco.calculer_indice_buts(pression_A, pression_B, bonus_dyn)
         lecture, conseil = eco.interpreter_indice(indice_final)
         st.markdown(f"## Indice de Buts : {indice_final} / 100")
         st.success(f"### {lecture}")
         st.write(f"**Marchés à privilégier :** {conseil}")
+        st.info("💡 **Conseil de Pro** : Utilise cet indice comme un filtre.")
 
 with tab3:
     st.subheader("📡 Scanner Intelligent (GAMMA-X Activé + Filtre Temporel)")
+    st.write("Le scanner applique GAMMA-X et filtre les matchs par date et par seuil de fiabilité.")
+    
     col_scan1, col_scan2, col_scan3, col_scan4 = st.columns(4)
     with col_scan1:
         ligue_radar = st.selectbox("Ligue", options=list(CHAMPIONNATS.keys()), format_func=lambda x: CHAMPIONNATS[x], key="k_ligue_radar")
@@ -441,78 +444,119 @@ with tab3:
         
     if st.button("🚀 Lancer le Scanner (Max 5 matchs)", key="k_btn_radar"):
         if not api_key:
-            st.error("Clé API requise.")
+            st.error("Clé API requise dans le menu de gauche.")
         else:
             jours_map = {"Aujourd'hui": 0, "Demain": 1, "Dans les 3 jours": 3, "Dans les 7 jours": 7, "Toutes les dates": None}
             jours_max = jours_map[horizon]
-            with st.spinner(f"Scan en cours..."):
+            
+            with st.spinner(f"Scan des matchs en cours ({horizon})..."):
                 mu_radar = api.recuperer_moyenne_ligue(ligue_radar, api_key)
                 matchs = api.recuperer_prochains_matchs(ligue_radar, api_key, limite=5, jours_max=jours_max)
+                
                 if not matchs:
-                    st.warning("Aucun match trouvé.")
+                    st.warning(f"Aucun match programmé trouvé dans cette fenêtre ({horizon}).")
                 else:
                     resultats_radar = []
                     for m in matchs:
-                        eq_A = m["equipe_A"]; eq_B = m["equipe_B"]
+                        eq_A = m["equipe_A"]
+                        eq_B = m["equipe_B"]
+                        
                         sA = api.recuperer_stats_equipe(eq_A, ligue_radar, api_key)
                         sB = api.recuperer_stats_equipe(eq_B, ligue_radar, api_key)
+                        
                         if "erreur" not in sA and "erreur" not in sB:
                             M_A = me.appliquer_shrinkage(sA["moy_marques"], sA["matchs"], mu_radar)
                             E_A = me.appliquer_shrinkage(sA["moy_encaisses"], sA["matchs"], mu_radar)
                             M_B = me.appliquer_shrinkage(sB["moy_marques"], sB["matchs"], mu_radar)
                             E_B = me.appliquer_shrinkage(sB["moy_encaisses"], sB["matchs"], mu_radar)
+                            
                             lam_A = me.calculer_lambda(M_A, E_B, mu_radar)
                             lam_B = me.calculer_lambda(M_B, E_A, mu_radar)
+                            
                             lam_A = gx.appliquer_correction_multiplicative(lam_A, db.recuperer_memoire_equipe(eq_A))
                             lam_B = gx.appliquer_correction_multiplicative(lam_B, db.recuperer_memoire_equipe(eq_B))
+                            
                             matrice_dc = dc.appliquer_correction(lam_A, lam_B, -0.05)
+                            
                             over_25 = sum(p for (i, j), p in matrice_dc.items() if i + j > 2.5)
                             p_btts = sum(p for (i, j), p in matrice_dc.items() if i > 0 and j > 0)
                             p_A = sum(p for (i, j), p in matrice_dc.items() if i > j)
+                            
                             if (over_25 * 100 >= seuil_over) or (p_btts * 100 >= seuil_btts):
                                 resultats_radar.append({
-                                    "Date": m["date"], "Match": f"{eq_A} vs {eq_B}",
-                                    "Over 2.5": f"{over_25*100:.1f}%", "BTTS": f"{p_btts*100:.1f}%"
+                                    "Date": m["date"],
+                                    "Match": f"{eq_A} vs {eq_B}",
+                                    "λ A": f"{lam_A:.2f}",
+                                    "λ B": f"{lam_B:.2f}",
+                                    "Over 2.5": f"{over_25*100:.1f}%",
+                                    "BTTS": f"{p_btts*100:.1f}%",
+                                    "Victoire A": f"{p_A*100:.1f}%"
                                 })
+                    
                     if resultats_radar:
-                        st.success(f"✅ {len(resultats_radar)} match(s) validé(s).")
-                        st.dataframe(pd.DataFrame(resultats_radar), use_container_width=True, hide_index=True)
+                        st.success(f"✅ {len(resultats_radar)} match(s) validé(s) sur {len(matchs)} scanné(s) — Horizon : {horizon}")
+                        df_radar = pd.DataFrame(resultats_radar)
+                        st.dataframe(df_radar, use_container_width=True, hide_index=True)
+                        st.info("💡 Note ces matchs, puis va dans 'Analyse Simple' pour vérifier les Value Bets.")
                     else:
-                        st.warning("Aucun match ne dépasse les seuils.")
+                        st.warning(f"Aucun match ne dépasse les seuils (Over {seuil_over}% / BTTS {seuil_btts}%) sur les {len(matchs)} match(s) scanné(s).")
 
 with tab4:
     st.subheader("📊 Dashboard de Calibration")
+    st.write("Vérifie la fiabilité de ton bot (Brier Score) et apprends-lui de ses erreurs.")
+    
+    st.markdown("### 1. Enregistrer les résultats des paris")
     df_hist_cal = db.recuperer_historique()
     if df_hist_cal.empty:
-        st.info("Aucun pari enregistré.")
+        st.info("Aucun pari enregistré. Fais des analyses pour remplir l'historique !")
     else:
         df_attente = df_hist_cal[df_hist_cal['resultat'].isna()]
+        
         if not df_attente.empty:
             for index, row in df_attente.head(5).iterrows():
                 col_info, col_btn_win, col_btn_lose = st.columns([3, 1, 1])
-                with col_info: st.write(f"**{row['match']}** - {row['marche']} (Proba: {row['probabilite']:.1f}%)")
+                with col_info:
+                    st.write(f"**{row['match']}** - {row['marche']} (Proba: {row['probabilite']:.1f}%)")
                 with col_btn_win:
                     if st.button(f"✅ Gagné", key=f"win_{row['id']}"):
-                        db.maj_resultat(row['id'], 1); st.rerun()
+                        db.maj_resultat(row['id'], 1)
+                        st.rerun()
                 with col_btn_lose:
                     if st.button(f"❌ Perdu", key=f"lose_{row['id']}"):
-                        db.maj_resultat(row['id'], 0); st.rerun()
+                        db.maj_resultat(row['id'], 0)
+                        st.rerun()
         else:
-            st.success("Tous les paris ont un résultat !")
+            st.success("Tous les paris ont un résultat enregistré !")
 
+        st.markdown("---")
+        st.markdown("### 2. Évaluation de la Fiabilité (Brier Score)")
+        
         df_avec_resultat = df_hist_cal[df_hist_cal['resultat'].notna()]
+        
         if len(df_avec_resultat) > 0:
             probas = df_avec_resultat['probabilite'].values / 100.0
             resultats = df_avec_resultat['resultat'].astype(int).values
+            
             brier = cal5.calculer_brier(probas, resultats)
-            st.metric("Brier Score Actuel", f"{brier:.4f}")
+            col_bs1, col_bs2 = st.columns(2)
+            col_bs1.metric("Brier Score Actuel", f"{brier:.4f}", help="Plus c'est proche de 0, meilleur est le modèle.")
+            
+            if brier < 0.15: st.success("🟢 Excellent ! Modèle très bien calibré.")
+            elif brier < 0.25: st.warning("🟡 Moyen. Le modèle peut être amélioré.")
+            else: st.error("🔴 Faible. Modèle trop confiant ou pas assez.")
+                
+            st.markdown("### 3. Couche de Recalibrage")
             probas_platt = [cal5.platt_scaling(p, A=1.0, B=0.0) for p in probas]
             brier_platt = cal5.calculer_brier(probas_platt, resultats)
+            
             probas_temp = [cal5.temperature_scaling(p, T=1.5) for p in probas]
             brier_temp = cal5.calculer_brier(probas_temp, resultats)
+            
             col_r1, col_r2, col_r3 = st.columns(3)
             col_r1.metric("Brier Original", f"{brier:.4f}")
-            col_r2.metric("Brier Platt", f"{brier_platt:.4f}")
-            col_r3.metric("Brier Temp", f"{brier_temp:.4f}")
+            col_r2.metric("Brier Platt Scaling", f"{brier_platt:.4f}")
+            col_r3.metric("Brier Temp Scaling", f"{brier_temp:.4f}")
+            
+            st.info("💡 Si une méthode de recalibrage donne un Brier Score plus bas, elle corrige mieux les erreurs.")
         else:
-            st.warning("Enregistre un résultat pour calculer le Brier Score.")
+            st.warning("⚠️ Enregistre au moins un résultat (Gagné/Perdu) pour calculer le Brier Score.")
