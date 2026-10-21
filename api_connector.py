@@ -179,3 +179,35 @@ def recuperer_prochains_matchs(code_ligue, api_key, limite=5, jours_max=None):
         return resultats
     except Exception:
         return []
+
+@st.cache_data(ttl=3600)
+def recuperer_classement_ligue(code_ligue, api_key):
+    """Récupère le classement complet d'une ligue avec les stats par équipe."""
+    if code_ligue not in CODES_LIGUES:
+        return {}
+    code_api = CODES_LIGUES[code_ligue]
+    headers = {"X-Auth-Token": api_key}
+    try:
+        url = f"https://api.football-data.org/v4/competitions/{code_api}/standings"
+        reponse = requests.get(url, headers=headers)
+        if reponse.status_code != 200:
+            return {}
+        
+        standings = reponse.json().get("standings", [])
+        if not standings:
+            return {}
+        
+        resultat = {}
+        for groupe in standings:
+            for eq in groupe["table"]:
+                nom = eq["team"]["name"]
+                resultat[nom] = {
+                    "buts_marques": eq["goalsFor"],
+                    "buts_encaisses": eq["goalsAgainst"],
+                    "matchs": eq["playedGames"],
+                    "points": eq["points"],
+                    "difference": eq["goalDifference"]
+                }
+        return resultat
+    except Exception:
+        return {}
